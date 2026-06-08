@@ -412,9 +412,72 @@
       padding: 2px 8px; font-size: 0.75rem; color: var(--muted);
       font-family: 'Courier New', monospace;
     }
+
+    /* ───── SERVER STATUS BAR ───── */
+    #serverBar {
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      padding: 6px 24px;
+      font-size: 0.72rem;
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    }
+    .srv-dot {
+      width: 7px; height: 7px; border-radius: 50%; display: inline-block;
+      margin-right: 4px; flex-shrink: 0;
+    }
+    .srv-dot.on  { background: var(--success); box-shadow: 0 0 5px var(--success); }
+    .srv-dot.off { background: var(--accent3); }
+    .srv-dot.unknown { background: var(--muted); }
+    .srv-item { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+    .srv-item.live { color: var(--text); }
+    .srv-sep { color: var(--border); }
+
+    /* ───── SPINNER / LOADING ───── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 14px; height: 14px; border: 2px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin .7s linear infinite; display: inline-block;
+      vertical-align: middle; margin-right: 6px;
+    }
+    .loading-msg {
+      display: flex; align-items: center;
+      font-size: 0.8rem; color: var(--muted); padding: 16px 0;
+    }
+
+    /* ───── ERROR MSG ───── */
+    .err-box {
+      background: rgba(255,107,107,.08); border: 1px solid rgba(255,107,107,.3);
+      border-radius: 8px; padding: 10px 14px; font-size: 0.8rem; color: var(--accent3);
+    }
+    .warn-box {
+      background: rgba(237,137,54,.08); border: 1px solid rgba(237,137,54,.3);
+      border-radius: 8px; padding: 10px 14px; font-size: 0.8rem; color: var(--warning);
+    }
   </style>
 </head>
 <body>
+
+<!-- ═══════════════ SERVER STATUS BAR ═══════════════ -->
+<div id="serverBar">
+  <span class="srv-item" id="srvConn">
+    <span class="srv-dot unknown" id="dotConn"></span>
+    Đang kết nối server…
+  </span>
+  <span class="srv-sep">|</span>
+  <span class="srv-item" id="srvFaiss"><span class="srv-dot unknown"></span>FAISS index</span>
+  <span class="srv-sep">|</span>
+  <span class="srv-item" id="srvBm25"><span class="srv-dot unknown"></span>BM25</span>
+  <span class="srv-sep">|</span>
+  <span class="srv-item" id="srvOpenai"><span class="srv-dot unknown"></span>OpenAI</span>
+  <span class="srv-sep">|</span>
+  <span class="srv-item" id="srvJina"><span class="srv-dot unknown"></span>Jina Reranker</span>
+  <span class="srv-sep">|</span>
+  <span class="srv-item" id="srvPageindex"><span class="srv-dot unknown"></span>PageIndex</span>
+  <span style="margin-left:auto;color:var(--muted)">
+    server: <code id="srvUrl" style="color:var(--accent2)">http://127.0.0.1:5000</code>
+  </span>
+</div>
 
 <!-- ═══════════════ NAV ═══════════════ -->
 <nav>
@@ -810,97 +873,151 @@
 </footer>
 
 <script>
-// ─── Mock Data ───────────────────────────────────────────────────────────────
-const MOCK_CHUNKS = [
-  { content: "Điều 249 BLHS 2015: Người nào tàng trữ trái phép chất ma tuý, thì bị phạt tù từ 06 tháng đến 03 năm. Phạm tội thuộc một trong các trường hợp sau đây, thì bị phạt tù từ 03 năm đến 07 năm...", source: "BLHS 2015, Chương XX, Điều 249", score: 0.91 },
-  { content: "Điều 58 Luật 73/2021: Người nghiện ma tuý từ đủ 18 tuổi trở lên đã được cai nghiện tự nguyện hoặc cai nghiện tại gia đình, cộng đồng mà vẫn còn nghiện thì bị áp dụng biện pháp xử lý hành chính đưa vào cơ sở cai nghiện bắt buộc.", source: "Luật 73/2021, Điều 58", score: 0.86 },
-  { content: "Nghị định 105/2021: Danh mục các chất ma tuý và tiền chất được phân thành 4 danh mục I, II, III, IV theo mức độ kiểm soát và tính nguy hiểm. Danh mục I bao gồm các chất bị cấm hoàn toàn.", source: "NĐ-105/2021, Điều 3", score: 0.79 },
-  { content: "Báo Tuổi Trẻ (2023): Ca sĩ X bị bắt vì liên quan đến vụ tàng trữ 500g heroin tại TP.HCM. Cơ quan điều tra đang tiến hành làm rõ...", source: "Tuổi Trẻ Online, 15/08/2023", score: 0.71 },
-  { content: "Điều 250 BLHS: Tội mua bán trái phép chất ma tuý — Người phạm tội có thể bị phạt tù từ 02 năm đến 07 năm. Trường hợp phạm tội có tổ chức, mức phạt tăng lên từ 07 đến 15 năm tù.", source: "BLHS 2015, Điều 250", score: 0.67 },
-];
+// ═══════════════════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════════════════
+const API_BASE = "http://127.0.0.1:5000";
 
-const EVAL_DATA = {
-  hybrid: [
-    { metric: "Faithfulness", score: 0.82, threshold: 0.7, cls: "green-fill" },
-    { metric: "Answer Relevance", score: 0.78, threshold: 0.7, cls: "green-fill" },
-    { metric: "Context Recall", score: 0.71, threshold: 0.7, cls: "green-fill" },
-    { metric: "Context Precision", score: 0.69, threshold: 0.7, cls: "yellow-fill" },
-  ],
-  dense: [
-    { metric: "Faithfulness", score: 0.74, threshold: 0.7, cls: "green-fill" },
-    { metric: "Answer Relevance", score: 0.70, threshold: 0.7, cls: "green-fill" },
-    { metric: "Context Recall", score: 0.58, threshold: 0.7, cls: "red-fill" },
-    { metric: "Context Precision", score: 0.55, threshold: 0.7, cls: "red-fill" },
-  ],
-};
-
-const WORST_PERFORMERS = {
-  hybrid: `<strong>Config A — Hybrid + Rerank:</strong><br>
-  • <em>Context Precision (0.69)</em>: Một số chunks được retrieval không trực tiếp liên quan đến câu hỏi, chủ yếu do tài liệu báo chí có nội dung rộng.<br>
-  • Đề xuất: Tăng chunk size cho tài liệu pháp luật để giảm "noise" context; thêm metadata filter theo loại tài liệu.`,
-  dense: `<strong>Config B — Dense Only:</strong><br>
-  • <em>Context Recall (0.58)</em>: Dense-only bỏ sót nhiều chunks có liên quan về mặt từ vựng (tên điều luật cụ thể). BM25 đóng vai trò quan trọng cho exact-match queries.<br>
-  • <em>Context Precision (0.55)</em>: Vector embedding chưa tối ưu cho tiếng Việt pháp luật.<br>
-  • Đề xuất: Sử dụng Hybrid Search — cải thiện đáng kể cả Recall và Precision.`,
-};
-
-// ─── Chat ────────────────────────────────────────────────────────────────────
-const BOT_RESPONSES = [
-  {
-    q: "hình phạt tội tàng trữ",
-    a: `Theo quy định tại <span class="citation">[BLHS 2015, Điều 249]</span>, tội tàng trữ trái phép chất ma tuý có các khung hình phạt:<br><br>
-    • <strong>Khung 1:</strong> 06 tháng – 03 năm tù<br>
-    • <strong>Khung 2:</strong> 03 – 07 năm tù (có tổ chức, tái phạm nguy hiểm)<br>
-    • <strong>Khung 3:</strong> 07 – 15 năm tù (trọng lượng lớn)<br>
-    • <strong>Khung 4:</strong> 15 – 20 năm hoặc tù chung thân<br><br>
-    Ngoài ra, người phạm tội có thể bị phạt tiền từ 5 – 500 triệu đồng theo <span class="citation">[Luật 73/2021, Điều 58]</span>.`,
-    sources: ["BLHS 2015, Chương XX, Điều 249", "Luật 73/2021/QH15, Điều 58"]
-  },
-  {
-    q: "luật phòng chống ma tuý",
-    a: `<span class="citation">[Luật 73/2021/QH15]</span> — Luật Phòng, chống ma tuý 2021 (có hiệu lực từ 01/01/2022) gồm các nội dung chính:<br><br>
-    • Phòng ngừa, đấu tranh chống tội phạm ma tuý<br>
-    • Cai nghiện ma tuý tự nguyện, bắt buộc<br>
-    • Quản lý, kiểm soát tiền chất, thuốc gây nghiện<br>
-    • Trách nhiệm của cơ quan, tổ chức, cá nhân <span class="citation">[Luật 73/2021, Chương I]</span>`,
-    sources: ["Luật Phòng chống ma tuý 73/2021/QH15", "NĐ-105/2021 hướng dẫn thi hành"]
-  },
-  {
-    q: "nghệ sĩ",
-    a: `Dựa trên dữ liệu crawl từ các báo lớn <span class="citation">[Tuổi Trẻ, VnExpress, 2022-2023]</span>, một số nghệ sĩ đã bị xử lý hình sự hoặc hành chính liên quan đến ma tuý. Các trường hợp điển hình:<br><br>
-    • Bị bắt khi tàng trữ tại nhà riêng hoặc tụ điểm<br>
-    • Bị tước giấy phép hoạt động nghệ thuật <span class="citation">[Nghị định 38/2021/NĐ-CP]</span><br>
-    • Một số trường hợp phải đi cai nghiện bắt buộc theo <span class="citation">[Luật 73/2021, Điều 58]</span>`,
-    sources: ["Tuổi Trẻ Online crawled data", "VnExpress crawled data", "NĐ-38/2021 xử phạt vi phạm văn hoá"]
-  },
-  {
-    q: "tiền chất",
-    a: `<span class="citation">[NĐ-105/2021, Điều 3]</span> quy định tiền chất ma tuý là các hoá chất có thể dùng để điều chế chất ma tuý. Danh mục gồm:<br><br>
-    • <strong>Bảng I:</strong> Tiền chất bị kiểm soát nghiêm ngặt nhất (ephedrine, pseudoephedrine...)<br>
-    • <strong>Bảng II:</strong> Tiền chất kiểm soát mức độ vừa<br>
-    • Hành vi mua bán, tàng trữ tiền chất trái phép bị xử lý theo <span class="citation">[BLHS 2015, Điều 252]</span>`,
-    sources: ["NĐ-105/2021, Điều 3-5", "BLHS 2015, Điều 252"]
-  },
-];
-
-function getBotReply(input) {
-  const lower = input.toLowerCase();
-  for (const r of BOT_RESPONSES) {
-    if (lower.includes(r.q)) return r;
-  }
-  return {
-    a: `Tôi đã tìm kiếm qua cơ sở dữ liệu pháp luật nhưng chưa tìm thấy thông tin chính xác về "<em>${input}</em>". Hệ thống đã chuyển sang <span class="highlight">PageIndex Vectorless Fallback</span> — tuy nhiên câu hỏi này cần thêm dữ liệu. Vui lòng thử câu hỏi liên quan đến hình phạt, cai nghiện hoặc văn bản pháp luật cụ thể.`,
-    sources: ["PageIndex Fallback — không đủ evidence"]
-  };
+// ═══════════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════════
+async function apiFetch(path, body = null) {
+  const opts = body
+    ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+    : { method: "GET" };
+  const res = await fetch(API_BASE + path, opts);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
 }
 
+function loading(msg = "Đang tải…") {
+  return `<div class="loading-msg"><span class="spinner"></span>${msg}</div>`;
+}
+function errBox(msg) {
+  return `<div class="err-box">⚠ ${msg}</div>`;
+}
+function warnBox(msg) {
+  return `<div class="warn-box">ℹ ${msg}</div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SERVER STATUS BAR
+// ═══════════════════════════════════════════════════════════════════
+let _serverOnline = false;
+
+function _setDot(el, on) {
+  const dot = el.querySelector(".srv-dot");
+  dot.className = "srv-dot " + (on ? "on" : "off");
+  el.className  = "srv-item" + (on ? " live" : "");
+}
+
+async function checkStatus() {
+  try {
+    const s = await apiFetch("/api/status");
+    _serverOnline = true;
+
+    const conn = document.getElementById("srvConn");
+    document.getElementById("dotConn").className = "srv-dot on";
+    conn.className = "srv-item live";
+    conn.innerHTML = `<span class="srv-dot on"></span>Server online`;
+
+    _setDot(document.getElementById("srvFaiss"),
+      `<span class="srv-dot ${s.faiss_index ? 'on':'off'}"></span>FAISS (${s.faiss_chunks} chunks)`);
+    document.getElementById("srvFaiss").innerHTML =
+      `<span class="srv-dot ${s.faiss_index ? 'on':'off'}"></span>FAISS (${s.faiss_chunks || 0} chunks)`;
+    document.getElementById("srvFaiss").className = "srv-item" + (s.faiss_index ? " live" : "");
+
+    document.getElementById("srvBm25").innerHTML =
+      `<span class="srv-dot ${s.bm25 ? 'on':'off'}"></span>BM25`;
+    document.getElementById("srvBm25").className = "srv-item" + (s.bm25 ? " live" : "");
+
+    document.getElementById("srvOpenai").innerHTML =
+      `<span class="srv-dot ${s.openai_key ? 'on':'off'}"></span>OpenAI`;
+    document.getElementById("srvOpenai").className = "srv-item" + (s.openai_key ? " live" : "");
+
+    document.getElementById("srvJina").innerHTML =
+      `<span class="srv-dot ${s.jina_key ? 'on':'off'}"></span>Jina Reranker`;
+    document.getElementById("srvJina").className = "srv-item" + (s.jina_key ? " live" : "");
+
+    document.getElementById("srvPageindex").innerHTML =
+      `<span class="srv-dot ${s.pageindex_key ? 'on':'off'}"></span>PageIndex`;
+    document.getElementById("srvPageindex").className = "srv-item" + (s.pageindex_key ? " live" : "");
+
+    // Khi server online, khởi động các demo
+    runSemanticSearch();
+    runLexicalSearch();
+    runRerank();
+    renderEval("hybrid");
+
+  } catch {
+    _serverOnline = false;
+    const conn = document.getElementById("srvConn");
+    document.getElementById("dotConn").className = "srv-dot off";
+    conn.className = "srv-item";
+    conn.innerHTML = `<span class="srv-dot off"></span>Server offline — chạy: <code>python app.py</code>`;
+
+    // Khi offline, dùng mock data để demo giao diện
+    runSemanticSearchMock();
+    runLexicalSearchMock();
+    runRerankMock();
+    renderEval("hybrid");
+    renderReorder([]);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MOCK DATA (fallback khi server offline)
+// ═══════════════════════════════════════════════════════════════════
+const MOCK_CHUNKS = [
+  { content: "Điều 249 BLHS 2015: Người nào tàng trữ trái phép chất ma tuý, thì bị phạt tù từ 06 tháng đến 03 năm. Phạm tội thuộc một trong các trường hợp sau đây, thì bị phạt tù từ 03 năm đến 07 năm...", source: "BLHS 2015, Chương XX, Điều 249", score: 0.91, metadata: {source:"BLHS 2015, Điều 249", type:"legal"} },
+  { content: "Điều 58 Luật 73/2021: Người nghiện ma tuý từ đủ 18 tuổi trở lên đã được cai nghiện tự nguyện hoặc cai nghiện tại gia đình, cộng đồng mà vẫn còn nghiện thì bị áp dụng biện pháp xử lý hành chính đưa vào cơ sở cai nghiện bắt buộc.", source: "Luật 73/2021, Điều 58", score: 0.86, metadata: {source:"Luật 73/2021", type:"legal"} },
+  { content: "Nghị định 105/2021: Danh mục các chất ma tuý và tiền chất được phân thành 4 danh mục I, II, III, IV theo mức độ kiểm soát và tính nguy hiểm. Danh mục I bao gồm các chất bị cấm hoàn toàn.", source: "NĐ-105/2021, Điều 3", score: 0.79, metadata: {source:"NĐ-105/2021", type:"legal"} },
+  { content: "Báo Tuổi Trẻ (2023): Ca sĩ X bị bắt vì liên quan đến vụ tàng trữ 500g heroin tại TP.HCM. Cơ quan điều tra đang tiến hành làm rõ...", source: "Tuổi Trẻ Online, 15/08/2023", score: 0.71, metadata: {source:"Tuổi Trẻ Online", type:"news"} },
+  { content: "Điều 250 BLHS: Tội mua bán trái phép chất ma tuý — Người phạm tội có thể bị phạt tù từ 02 năm đến 07 năm. Trường hợp phạm tội có tổ chức, mức phạt tăng lên từ 07 đến 15 năm tù.", source: "BLHS 2015, Điều 250", score: 0.67, metadata: {source:"BLHS 2015, Điều 250", type:"legal"} },
+];
+
+// ═══════════════════════════════════════════════════════════════════
+// RESULT RENDERING
+// ═══════════════════════════════════════════════════════════════════
+function renderResults(container, results) {
+  if (!results || results.length === 0) {
+    container.innerHTML = warnBox("Không tìm thấy kết quả phù hợp.");
+    return;
+  }
+  const typeColors = { legal: "var(--accent)", news: "var(--accent2)" };
+  container.innerHTML = results.map((r, i) => {
+    const meta  = r.metadata || {};
+    const src   = meta.source || r.source || "?";
+    const dtype = meta.type   || "";
+    const color = typeColors[dtype] || "var(--muted)";
+    return `
+    <div class="result-item">
+      <span class="score">${Number(r.score).toFixed(4)}</span>
+      <div style="font-weight:600;font-size:.8rem">#${i + 1}
+        ${dtype ? `<span style="font-size:.68rem;color:${color};margin-left:6px">[${dtype}]</span>` : ""}
+      </div>
+      <div class="result-text">${r.content.slice(0, 160)}…</div>
+      <div class="result-source">📄 ${src}</div>
+    </div>`;
+  }).join("");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CHAT
+// ═══════════════════════════════════════════════════════════════════
 function appendMsg(role, html, meta, sourcesArr) {
-  const msgs = document.getElementById('chatMessages');
-  const div = document.createElement('div');
+  const msgs = document.getElementById("chatMessages");
+  const div  = document.createElement("div");
   div.className = `msg ${role}`;
   let inner = `<div class="msg-bubble">${html}</div>`;
   if (sourcesArr && sourcesArr.length) {
-    inner += `<div class="sources-box"><strong>📚 Nguồn:</strong><ul>${sourcesArr.map(s=>`<li>${s}</li>`).join('')}</ul></div>`;
+    inner += `<div class="sources-box"><strong>📚 Nguồn:</strong><ul>
+      ${sourcesArr.map(s => {
+        const src = typeof s === "string" ? s : (s.metadata?.source || s.source || "?");
+        return `<li>${src}</li>`;
+      }).join("")}
+    </ul></div>`;
   }
   inner += `<div class="msg-meta">${meta}</div>`;
   div.innerHTML = inner;
@@ -909,163 +1026,343 @@ function appendMsg(role, html, meta, sourcesArr) {
 }
 
 function appendTyping() {
-  const msgs = document.getElementById('chatMessages');
-  const div = document.createElement('div');
-  div.className = 'msg bot'; div.id = 'typingIndicator';
+  const msgs = document.getElementById("chatMessages");
+  const div  = document.createElement("div");
+  div.className = "msg bot"; div.id = "typingIndicator";
   div.innerHTML = `<div class="msg-bubble"><div class="typing"><span></span><span></span><span></span></div></div>`;
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
 }
 
-function sendChat() {
-  const input = document.getElementById('chatInput');
-  const q = input.value.trim();
+async function sendChat() {
+  const input = document.getElementById("chatInput");
+  const q     = input.value.trim();
   if (!q) return;
-  appendMsg('user', q, 'Bạn • vừa xong');
-  input.value = '';
+  appendMsg("user", q, "Bạn • vừa xong");
+  input.value = "";
   appendTyping();
-  setTimeout(() => {
-    document.getElementById('typingIndicator')?.remove();
-    const r = getBotReply(q);
-    appendMsg('bot', r.a, 'DrugLaw Bot • vừa xong', r.sources);
-  }, 1000 + Math.random() * 600);
+
+  if (_serverOnline) {
+    try {
+      const result = await apiFetch("/api/generate", {
+        query: q, top_k: 5, score_threshold: 0.3
+      });
+      document.getElementById("typingIndicator")?.remove();
+
+      // Format answer — preserve newlines
+      const answerHtml = result.answer
+        .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\[(.*?)\]/g, `<span class="citation">[$1]</span>`)
+        .replace(/\n/g, "<br>");
+
+      appendMsg("bot", answerHtml, "DrugLaw Bot • vừa xong", result.sources || []);
+
+      // Show pipeline log in console
+      if (result.log) console.log("Pipeline log:", result.log.join("\n"));
+
+    } catch (err) {
+      document.getElementById("typingIndicator")?.remove();
+      appendMsg("bot",
+        `<div class="err-box">⚠ Lỗi: ${err.message}</div>`,
+        "DrugLaw Bot • lỗi"
+      );
+    }
+  } else {
+    // Offline fallback
+    setTimeout(() => {
+      document.getElementById("typingIndicator")?.remove();
+      const r = getMockBotReply(q);
+      appendMsg("bot", r.a, "DrugLaw Bot (offline demo) • vừa xong", r.sources);
+    }, 900 + Math.random() * 400);
+  }
 }
 
 function sendQuickQ(el) {
-  document.getElementById('chatInput').value = el.textContent;
+  document.getElementById("chatInput").value = el.textContent;
   sendChat();
 }
 
 function clearChat() {
-  document.getElementById('chatMessages').innerHTML = `
+  document.getElementById("chatMessages").innerHTML = `
     <div class="msg bot">
       <div class="msg-bubble">Chat đã được xoá. Bạn có thể bắt đầu cuộc hội thoại mới.</div>
       <div class="msg-meta">DrugLaw Bot • vừa xong</div>
     </div>`;
 }
 
-// ─── Search ───────────────────────────────────────────────────────────────────
-function renderResults(container, results) {
-  container.innerHTML = results.map((r,i) => `
-    <div class="result-item">
-      <span class="score">${(r.score * (1 + Math.random()*0.02 - 0.01)).toFixed(3)}</span>
-      <div style="font-weight:600;font-size:.8rem">#${i+1}</div>
-      <div class="result-text">${r.content.slice(0,140)}…</div>
-      <div class="result-source">📄 ${r.source}</div>
-    </div>`).join('');
+// Offline mock replies
+const BOT_RESPONSES = [
+  { q: "hình phạt tội tàng trữ", a: `Theo quy định tại <span class="citation">[BLHS 2015, Điều 249]</span>, tội tàng trữ trái phép chất ma tuý có các khung hình phạt:<br><br>• <strong>Khung 1:</strong> 06 tháng – 03 năm tù<br>• <strong>Khung 2:</strong> 03 – 07 năm tù (có tổ chức, tái phạm nguy hiểm)<br>• <strong>Khung 3:</strong> 07 – 15 năm tù (trọng lượng lớn)<br>• <strong>Khung 4:</strong> 15 – 20 năm hoặc tù chung thân`, sources: ["BLHS 2015, Điều 249", "Luật 73/2021"] },
+  { q: "luật phòng chống ma tuý", a: `<span class="citation">[Luật 73/2021/QH15]</span> — Luật Phòng, chống ma tuý 2021 gồm các nội dung chính:<br><br>• Phòng ngừa, đấu tranh chống tội phạm ma tuý<br>• Cai nghiện ma tuý tự nguyện, bắt buộc<br>• Quản lý, kiểm soát tiền chất, thuốc gây nghiện`, sources: ["Luật 73/2021/QH15", "NĐ-105/2021"] },
+  { q: "nghệ sĩ", a: `Dựa trên dữ liệu crawl <span class="citation">[Tuổi Trẻ, VnExpress, 2022-2023]</span>, một số nghệ sĩ đã bị xử lý hình sự hoặc hành chính liên quan đến ma tuý.`, sources: ["Tuổi Trẻ Online", "VnExpress"] },
+  { q: "tiền chất", a: `<span class="citation">[NĐ-105/2021, Điều 3]</span> quy định tiền chất ma tuý là các hoá chất có thể dùng để điều chế chất ma tuý. Danh mục gồm Bảng I và Bảng II.`, sources: ["NĐ-105/2021, Điều 3", "BLHS 2015, Điều 252"] },
+];
+function getMockBotReply(input) {
+  const lower = input.toLowerCase();
+  for (const r of BOT_RESPONSES) if (lower.includes(r.q)) return r;
+  return { a: `<div class="warn-box">Server offline. Khởi động server bằng lệnh: <code>python app.py</code></div>`, sources: [] };
 }
 
-function runSemanticSearch() {
-  const q = document.getElementById('semanticQ').value.trim();
+// ═══════════════════════════════════════════════════════════════════
+// SEMANTIC SEARCH (Task 5)
+// ═══════════════════════════════════════════════════════════════════
+async function runSemanticSearch() {
+  const q   = document.getElementById("semanticQ").value.trim();
+  const out = document.getElementById("semanticResults");
   if (!q) return;
-  const sorted = MOCK_CHUNKS.slice().sort((a,b) => b.score - a.score);
-  renderResults(document.getElementById('semanticResults'), sorted);
+  out.innerHTML = loading("Đang tìm kiếm ngữ nghĩa…");
+  try {
+    const results = await apiFetch("/api/search/semantic", { query: q, top_k: 5 });
+    renderResults(out, results);
+  } catch (err) {
+    out.innerHTML = errBox(err.message);
+  }
+}
+function runSemanticSearchMock() {
+  const sorted = MOCK_CHUNKS.slice().sort((a, b) => b.score - a.score);
+  renderResults(document.getElementById("semanticResults"), sorted);
 }
 
-function runLexicalSearch() {
-  const q = document.getElementById('lexicalQ').value.trim();
+// ═══════════════════════════════════════════════════════════════════
+// LEXICAL SEARCH — BM25 (Task 6)
+// ═══════════════════════════════════════════════════════════════════
+async function runLexicalSearch() {
+  const q   = document.getElementById("lexicalQ").value.trim();
+  const out = document.getElementById("lexicalResults");
   if (!q) return;
-  // BM25 tends to favour exact-match — shuffle differently for demo contrast
+  out.innerHTML = loading("Đang tính BM25…");
+  try {
+    const results = await apiFetch("/api/search/lexical", { query: q, top_k: 5 });
+    renderResults(out, results);
+  } catch (err) {
+    out.innerHTML = errBox(err.message);
+  }
+}
+function runLexicalSearchMock() {
   const shuffled = [...MOCK_CHUNKS].sort(() => Math.random() - 0.5);
-  renderResults(document.getElementById('lexicalResults'), shuffled);
+  renderResults(document.getElementById("lexicalResults"), shuffled);
 }
 
-// Auto-run on load
-window.addEventListener('load', () => { runSemanticSearch(); runLexicalSearch(); runRerank(); renderReorder(); renderEval('hybrid'); });
+// Sync both search inputs
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("semanticQ").addEventListener("input", e => {
+    document.getElementById("lexicalQ").value = e.target.value;
+  });
+  document.getElementById("lexicalQ").addEventListener("input", e => {
+    document.getElementById("semanticQ").value = e.target.value;
+  });
+});
 
-// ─── Rerank ───────────────────────────────────────────────────────────────────
-function runRerank() {
-  const before = [...MOCK_CHUNKS];
-  const after  = [...MOCK_CHUNKS].sort((a,b) => b.score - a.score + (Math.random()*.1 - .05));
-  renderResults(document.getElementById('rerankBeforeList'), before);
-  renderResults(document.getElementById('rerankAfterList'), after);
+// ═══════════════════════════════════════════════════════════════════
+// RERANKING (Task 7)
+// ═══════════════════════════════════════════════════════════════════
+let _rerankCandidates = [];
+
+async function runRerank() {
+  const q   = document.getElementById("rerankQ").value.trim();
+  const bL  = document.getElementById("rerankBeforeList");
+  const aL  = document.getElementById("rerankAfterList");
+  if (!q) return;
+  bL.innerHTML = loading("Đang lấy candidates từ hybrid search…");
+  aL.innerHTML = loading("Chờ reranking…");
+
+  if (!_serverOnline) { runRerankMock(); return; }
+
+  try {
+    // Step 1: get hybrid candidates
+    const dense  = await apiFetch("/api/search/semantic", { query: q, top_k: 5 });
+    const sparse = await apiFetch("/api/search/lexical",  { query: q, top_k: 5 });
+    // Merge (union, keep unique by first 200 chars)
+    const seen = new Set();
+    const combined = [...dense, ...sparse].filter(r => {
+      const k = r.content.slice(0, 200);
+      if (seen.has(k)) return false;
+      seen.add(k); return true;
+    });
+    _rerankCandidates = combined;
+    renderResults(bL, combined);
+
+    // Step 2: rerank
+    const ranked = await apiFetch("/api/rerank", { query: q, candidates: combined, top_k: 5 });
+    const method = ranked.method === "jina" ? "Jina API" : "Score Sort (fallback)";
+    aL.innerHTML = `<div style="font-size:.72rem;color:var(--accent2);margin-bottom:8px">Method: ${method}</div>`;
+    renderResults(aL, ranked.results);
+
+  } catch (err) {
+    bL.innerHTML = errBox(err.message);
+    aL.innerHTML = "";
+  }
+}
+function runRerankMock() {
+  renderResults(document.getElementById("rerankBeforeList"), MOCK_CHUNKS);
+  const sorted = [...MOCK_CHUNKS].sort((a, b) => b.score - a.score);
+  renderResults(document.getElementById("rerankAfterList"), sorted);
 }
 
 function switchRerankTab(el, tab) {
-  document.querySelectorAll('#rerank .tab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
-  document.getElementById('rerankBefore').style.display = tab === 'before' ? '' : 'none';
-  document.getElementById('rerankAfter').style.display  = tab === 'after'  ? '' : 'none';
+  document.querySelectorAll("#rerank .tab").forEach(t => t.classList.remove("active"));
+  el.classList.add("active");
+  document.getElementById("rerankBefore").style.display = tab === "before" ? "" : "none";
+  document.getElementById("rerankAfter").style.display  = tab === "after"  ? "" : "none";
 }
 
-// ─── Retrieval ────────────────────────────────────────────────────────────────
-function runRetrieval() {
-  const q = document.getElementById('retrieveQ').value.trim();
-  const threshold = parseFloat(document.getElementById('thresholdSel').value);
-  const logEl = document.getElementById('retrievalLog');
-  const resEl = document.getElementById('retrievalResults');
+// ═══════════════════════════════════════════════════════════════════
+// RETRIEVAL PIPELINE (Task 9)
+// ═══════════════════════════════════════════════════════════════════
+async function runRetrieval() {
+  const q         = document.getElementById("retrieveQ").value.trim();
+  const threshold = parseFloat(document.getElementById("thresholdSel").value);
+  const logEl     = document.getElementById("retrievalLog");
+  const resEl     = document.getElementById("retrievalResults");
 
-  const topScore = 0.62; // simulated
-  const fallback = topScore < threshold;
+  if (!_serverOnline) {
+    const topScore = 0.62;
+    const fallback = topScore < threshold;
+    logEl.innerHTML = `
+      <div style="border-left:3px solid var(--accent);padding:8px 12px;background:var(--surface2);border-radius:0 8px 8px 0;margin-bottom:10px">
+        <div>🔵 Semantic Search → 5 results &nbsp;|&nbsp; 🟠 BM25 → 5 results</div>
+        <div style="margin-top:4px">⚖️ RRF Merge + Rerank → top score:
+          <strong style="color:${fallback ? 'var(--accent3)' : 'var(--success)'}">
+            ${topScore.toFixed(3)}</strong> (threshold: ${threshold})</div>
+        ${fallback
+          ? `<div style="margin-top:4px;color:var(--accent3)">⚠️ Score below threshold → <strong>Fallback: PageIndex Vectorless</strong> triggered</div>`
+          : `<div style="margin-top:4px;color:var(--success)">✅ Score above threshold — returning hybrid results</div>`}
+        <div style="margin-top:4px;color:var(--warning)">⚠ Server offline — hiển thị mock data</div>
+      </div>`;
+    renderResults(resEl, fallback ? MOCK_CHUNKS.slice(0,3) : MOCK_CHUNKS.slice(0,4));
+    return;
+  }
 
-  logEl.innerHTML = `
-    <div style="border-left:3px solid var(--accent);padding:8px 12px;background:var(--surface2);border-radius:0 8px 8px 0;margin-bottom:10px">
-      <div>🔵 Semantic Search → 5 results &nbsp;|&nbsp; 🟠 BM25 → 5 results</div>
-      <div style="margin-top:4px">⚖️ RRF Merge + Rerank → top score: <strong style="color:${topScore < threshold ? 'var(--accent3)' : 'var(--success)'}">
-        ${topScore.toFixed(3)}</strong> (threshold: ${threshold})</div>
-      ${fallback
-        ? `<div style="margin-top:4px;color:var(--accent3)">⚠️ Score below threshold → <strong>Fallback: PageIndex Vectorless</strong> triggered</div>`
-        : `<div style="margin-top:4px;color:var(--success)">✅ Score above threshold — returning hybrid results</div>`}
+  logEl.innerHTML = loading("Đang chạy retrieval pipeline…");
+  resEl.innerHTML = "";
+
+  try {
+    const result = await apiFetch("/api/retrieve", {
+      query: q, top_k: 5, score_threshold: threshold, use_reranking: true
+    });
+
+    // Render log
+    const logHtml = result.log.map(l => `<div>${l}</div>`).join("");
+    const scoreColor = result.fallback_used ? "var(--accent3)"
+                     : result.best_score >= threshold ? "var(--success)" : "var(--warning)";
+    logEl.innerHTML = `
+      <div style="border-left:3px solid var(--accent);padding:8px 12px;background:var(--surface2);border-radius:0 8px 8px 0;margin-bottom:10px;font-size:.78rem">
+        ${logHtml}
+        <div style="margin-top:6px">
+          Top score: <strong style="color:${scoreColor}">${result.best_score.toFixed(4)}</strong>
+          (threshold: ${result.score_threshold})
+        </div>
+        ${result.fallback_used
+          ? `<div style="color:var(--accent3);margin-top:4px">⚠️ Fallback PageIndex activated</div>`
+          : `<div style="color:var(--success);margin-top:4px">✅ Hybrid results</div>`}
+      </div>`;
+
+    renderResults(resEl, result.results);
+  } catch (err) {
+    logEl.innerHTML = errBox(err.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// GENERATION — reorder visualisation (Task 10)
+// ═══════════════════════════════════════════════════════════════════
+function renderReorder(chunks) {
+  const colors = ["var(--accent)","var(--success)","var(--warning)","var(--accent3)","var(--accent2)"];
+  const items  = (chunks && chunks.length > 0) ? chunks : MOCK_CHUNKS;
+
+  const n = items.length;
+  // Reorder: indices 0,2,4 first, then 1,3,5 reversed
+  const firstHalf  = items.filter((_, i) => i % 2 === 0);
+  const secondHalf = items.filter((_, i) => i % 2 !== 0).reverse();
+  const reordered  = [...firstHalf, ...secondHalf];
+
+  document.getElementById("beforeReorder").innerHTML = items.map((c, i) => {
+    const src = (c.metadata?.source || c.source || `Chunk ${i+1}`);
+    return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:.8rem;display:flex;align-items:center;gap:8px">
+      <span style="width:22px;height:22px;border-radius:50%;background:${colors[i % colors.length]};display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;flex-shrink:0">${i+1}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.content.slice(0,70)}…</span>
+      <span style="margin-left:auto;font-size:.68rem;color:var(--muted);white-space:nowrap">${Number(c.score||0).toFixed(3)}</span>
     </div>`;
+  }).join("");
 
-  const results = fallback
-    ? MOCK_CHUNKS.slice(0,3).map(r => ({ ...r, source: r.source + ' [via PageIndex]', score: r.score * 0.8 }))
-    : MOCK_CHUNKS.slice(0,4);
-  renderResults(resEl, results);
+  document.getElementById("afterReorder").innerHTML = reordered.map((c, newPos) => {
+    const origPos = items.indexOf(c);
+    return `<div style="background:var(--surface2);border:1px solid ${colors[origPos % colors.length]};border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:.8rem;display:flex;align-items:center;gap:8px">
+      <span style="width:22px;height:22px;border-radius:50%;background:${colors[origPos % colors.length]};display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;flex-shrink:0">${origPos+1}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.content.slice(0,70)}…</span>
+      <span style="margin-left:auto;font-size:.68rem;color:var(--accent2);white-space:nowrap">★ pos ${newPos+1}</span>
+    </div>`;
+  }).join("");
 }
 
-// ─── Generation reorder ───────────────────────────────────────────────────────
-function renderReorder() {
-  const original = [1,2,3,4,5];
-  const reordered = [1,3,5,4,2]; // lost-in-middle pattern
-  const colors = ['var(--accent)', 'var(--success)', 'var(--warning)', 'var(--accent3)', 'var(--accent2)'];
+// ═══════════════════════════════════════════════════════════════════
+// EVAL TABLE
+// ═══════════════════════════════════════════════════════════════════
+const EVAL_DATA = {
+  hybrid: [
+    { metric: "Faithfulness",      score: 0.82, threshold: 0.7, cls: "green-fill" },
+    { metric: "Answer Relevance",  score: 0.78, threshold: 0.7, cls: "green-fill" },
+    { metric: "Context Recall",    score: 0.71, threshold: 0.7, cls: "green-fill" },
+    { metric: "Context Precision", score: 0.69, threshold: 0.7, cls: "yellow-fill" },
+  ],
+  dense: [
+    { metric: "Faithfulness",      score: 0.74, threshold: 0.7, cls: "green-fill" },
+    { metric: "Answer Relevance",  score: 0.70, threshold: 0.7, cls: "green-fill" },
+    { metric: "Context Recall",    score: 0.58, threshold: 0.7, cls: "red-fill" },
+    { metric: "Context Precision", score: 0.55, threshold: 0.7, cls: "red-fill" },
+  ],
+};
+const WORST_PERFORMERS = {
+  hybrid: `<strong>Config A — Hybrid + Rerank:</strong><br>
+  • <em>Context Precision (0.69)</em>: Một số chunks retrieval không trực tiếp liên quan đến câu hỏi, chủ yếu do tài liệu báo chí có nội dung rộng.<br>
+  • Đề xuất: Tăng chunk size cho tài liệu pháp luật; thêm metadata filter theo loại tài liệu.`,
+  dense: `<strong>Config B — Dense Only:</strong><br>
+  • <em>Context Recall (0.58)</em>: Dense-only bỏ sót nhiều chunks có liên quan về mặt từ vựng (tên điều luật cụ thể). BM25 đóng vai trò quan trọng cho exact-match queries.<br>
+  • <em>Context Precision (0.55)</em>: Vector embedding chưa tối ưu cho tiếng Việt pháp luật.<br>
+  • Đề xuất: Sử dụng Hybrid Search — cải thiện đáng kể cả Recall và Precision.`,
+};
 
-  document.getElementById('beforeReorder').innerHTML = original.map((n,i) =>
-    `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:.8rem;display:flex;align-items:center;gap:8px">
-      <span style="width:22px;height:22px;border-radius:50%;background:${colors[i]};display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;flex-shrink:0">${n}</span>
-      <span>${MOCK_CHUNKS[i].content.slice(0,60)}…</span>
-      <span style="margin-left:auto;font-size:.7rem;color:var(--muted)">${MOCK_CHUNKS[i].score.toFixed(2)}</span>
-    </div>`).join('');
-
-  document.getElementById('afterReorder').innerHTML = reordered.map(n =>
-    `<div style="background:var(--surface2);border:1px solid ${colors[n-1]};border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:.8rem;display:flex;align-items:center;gap:8px">
-      <span style="width:22px;height:22px;border-radius:50%;background:${colors[n-1]};display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;flex-shrink:0">${n}</span>
-      <span>${MOCK_CHUNKS[n-1].content.slice(0,60)}…</span>
-      <span style="margin-left:auto;font-size:.7rem;color:var(--accent2)">★ pos ${reordered.indexOf(n)+1}</span>
-    </div>`).join('');
-}
-
-// ─── Eval ─────────────────────────────────────────────────────────────────────
 function renderEval(config) {
   const rows = EVAL_DATA[config];
-  document.getElementById('evalBody').innerHTML = rows.map(r => `
+  document.getElementById("evalBody").innerHTML = rows.map(r => `
     <tr>
       <td style="font-weight:600">${r.metric}</td>
-      <td><span style="font-weight:700;color:${r.score >= r.threshold ? 'var(--success)' : 'var(--accent3)'}">${r.score.toFixed(2)}</span></td>
+      <td><span style="font-weight:700;color:${r.score >= r.threshold ? "var(--success)" : "var(--accent3)"}">${r.score.toFixed(2)}</span></td>
       <td>
         <div class="score-bar-wrap">
           <div class="score-bar"><div class="score-bar-fill ${r.cls}" style="width:${r.score*100}%"></div></div>
-          <div class="score-val" style="color:${r.score >= r.threshold ? 'var(--success)' : 'var(--accent3)'}">${Math.round(r.score*100)}%</div>
+          <div class="score-val" style="color:${r.score >= r.threshold ? "var(--success)" : "var(--accent3)"}">${Math.round(r.score*100)}%</div>
         </div>
       </td>
       <td><span style="color:var(--muted)">${r.threshold.toFixed(1)}</span></td>
-    </tr>`).join('');
-  document.getElementById('worstPerformers').innerHTML = WORST_PERFORMERS[config];
+    </tr>`).join("");
+  document.getElementById("worstPerformers").innerHTML = WORST_PERFORMERS[config];
 }
 
 function switchEvalTab(el, config) {
-  document.querySelectorAll('#eval .tab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
+  document.querySelectorAll("#eval .tab").forEach(t => t.classList.remove("active"));
+  el.classList.add("active");
   renderEval(config);
 }
 
-// ─── Nav highlight on scroll ─────────────────────────────────────────────────
-const sections = document.querySelectorAll('section[id]');
-const navLinks = document.querySelectorAll('nav a');
-window.addEventListener('scroll', () => {
-  let cur = '';
+// ═══════════════════════════════════════════════════════════════════
+// NAV HIGHLIGHT ON SCROLL
+// ═══════════════════════════════════════════════════════════════════
+const sections = document.querySelectorAll("section[id]");
+const navLinks  = document.querySelectorAll("nav a");
+window.addEventListener("scroll", () => {
+  let cur = "";
   sections.forEach(s => { if (window.scrollY >= s.offsetTop - 80) cur = s.id; });
-  navLinks.forEach(a => { a.classList.toggle('active', a.getAttribute('href') === '#' + cur); });
+  navLinks.forEach(a => { a.classList.toggle("active", a.getAttribute("href") === "#" + cur); });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════
+window.addEventListener("load", () => {
+  renderReorder([]);   // render reorder section with mock data immediately
+  renderEval("hybrid");
+  checkStatus();       // connect to server (replaces mock data if online)
 });
 </script>
 </body>
