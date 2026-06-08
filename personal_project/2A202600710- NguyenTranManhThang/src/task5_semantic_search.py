@@ -9,6 +9,8 @@ import pickle
 import numpy as np
 
 from src.task4_chunking_indexing import (
+    EMBEDDING_DIM,
+    EMBEDDING_MODEL,
     FAISS_INDEX_PATH,
     FAISS_META_PATH,
     embed_text,

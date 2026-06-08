@@ -5,13 +5,12 @@ Stack: rank-bm25, corpus lưu tại data/bm25_corpus.pkl
 """
 
 import pickle
+from pathlib import Path
 
-from src.task4_chunking_indexing import (
-    BM25_CORPUS_PATH,
-    chunk_documents,
-    load_documents,
-    save_bm25_corpus,
-)
+from src.task4_chunking_indexing import chunk_documents, load_documents
+
+DATA_DIR = Path(__file__).parent.parent / "data"
+BM25_CORPUS_PATH = DATA_DIR / "bm25_corpus.pkl"
 
 CORPUS: list[dict] = []
 _bm25_index = None
@@ -23,8 +22,10 @@ def build_and_save_bm25_corpus(chunks: list[dict] | None = None) -> list[dict]:
     if chunks is None:
         chunks = chunk_documents(load_documents())
 
-    save_bm25_corpus(chunks)
-    corpus = pickle.loads(BM25_CORPUS_PATH.read_bytes())
+    corpus = [{"content": c["content"], "metadata": c["metadata"]} for c in chunks]
+    BM25_CORPUS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    BM25_CORPUS_PATH.write_bytes(pickle.dumps(corpus))
+
     CORPUS = corpus
     _bm25_index = None
     return corpus
