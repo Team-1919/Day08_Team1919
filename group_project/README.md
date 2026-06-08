@@ -188,17 +188,176 @@ run_dashboard()
 
 ---
 
-## Hướng Dẫn Chạy
+## Hướng Dẫn Chạy Demo
+
+### Yêu cầu hệ thống
+- Python 3.10+
+- Kết nối Internet (lần đầu để tải embedding model ~471 MB)
+- API keys: `OPENAI_API_KEY`, `JINA_API_KEY` (tuỳ chọn), `PAGEINDEX_API_KEY` (tuỳ chọn)
+
+---
+
+### Bước 1 — Cài đặt môi trường
 
 ```bash
-# Cài đặt dependencies
-pip install -r requirements.txt
+# Tạo virtual environment (nếu chưa có)
+python -m venv .venv
 
-# Chạy app
-streamlit run app.py
-# hoặc
-chainlit run app.py
+# Kích hoạt (Windows)
+.venv\Scripts\activate
+
+# Kích hoạt (macOS / Linux)
+source .venv/bin/activate
+
+# Cài dependencies
+pip install -r requirements.txt
+pip install flask faiss-cpu sentence-transformers langchain-text-splitters rank-bm25
 ```
+
+---
+
+### Bước 2 — Cấu hình API keys
+
+Tạo file `.env` trong thư mục `group_project/`:
+
+```env
+OPENAI_API_KEY=sk-...          # Bắt buộc cho generation
+JINA_API_KEY=jina_...          # Tuỳ chọn — reranking chất lượng cao
+PAGEINDEX_API_KEY=pi_...       # Tuỳ chọn — vectorless fallback
+```
+
+---
+
+### Bước 3 — Thu thập dữ liệu (Task 1 & 2)
+
+> Bỏ qua nếu đã có file trong `data/landing/`
+
+```bash
+cd group_project
+
+# Task 1: Crawl văn bản pháp luật
+python -m src.task1_collect_legal_docs
+
+# Task 2: Crawl bài báo
+python -m src.task2_crawl_news
+```
+
+---
+
+### Bước 4 — Convert sang Markdown (Task 3)
+
+> Bỏ qua nếu đã có file trong `data/standardized/`
+
+```bash
+python -m src.task3_convert_markdown
+```
+
+---
+
+### Bước 5 — Build FAISS Index (Task 4) ⚠️ Bắt buộc
+
+```bash
+python -m src.task4_chunking_indexing
+```
+
+Output mong đợi:
+```
+[OK] Loaded N documents
+[OK] Created XXXX chunks
+[OK] Embedded XXXX chunks
+[OK] FAISS index co XXXX vectors
+[OK] Saved FAISS index: data/.faiss.index
+```
+
+> Lần đầu sẽ tải model `paraphrase-multilingual-MiniLM-L12-v2` (~471 MB).
+> Các lần sau load từ cache, rất nhanh.
+
+---
+
+### Bước 6 — Khởi động Flask API Server
+
+```bash
+# Chạy từ thư mục group_project/
+python app.py
+
+# Hoặc chỉ định port khác
+python app.py --port 5001
+```
+
+Output mong đợi:
+```
+============================================================
+RAG Pipeline v2 — Flask API Server
+  URL: http://127.0.0.1:5000
+  OpenAI key:  ✓
+  Jina key:    ✓
+============================================================
+ * Running on http://127.0.0.1:5000
+```
+
+---
+
+### Bước 7 — Mở giao diện Demo
+
+Mở trình duyệt và truy cập:
+
+```
+http://127.0.0.1:5000
+```
+
+Hoặc mở trực tiếp file `index.html` (server phải đang chạy để các tính năng hoạt động).
+
+---
+
+### Các API Endpoint
+
+| Method | Endpoint | Mô tả |
+|--------|----------|-------|
+| `GET`  | `/api/status` | Kiểm tra trạng thái FAISS, BM25, các API keys |
+| `POST` | `/api/search/semantic` | Semantic Search (Task 5) |
+| `POST` | `/api/search/lexical` | BM25 Lexical Search (Task 6) |
+| `POST` | `/api/rerank` | Reranking — Jina hoặc score sort (Task 7) |
+| `POST` | `/api/retrieve` | Full hybrid retrieval + fallback (Task 9) |
+| `POST` | `/api/generate` | RAG generation có citation (Task 10) |
+
+**Ví dụ gọi API:**
+```bash
+# Kiểm tra status
+curl http://127.0.0.1:5000/api/status
+
+# Semantic search
+curl -X POST http://127.0.0.1:5000/api/search/semantic \
+  -H "Content-Type: application/json" \
+  -d '{"query": "hình phạt tội tàng trữ ma tuý", "top_k": 5}'
+
+# Generation với citation
+curl -X POST http://127.0.0.1:5000/api/generate \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Luật phòng chống ma tuý 2021 quy định gì?", "top_k": 5}'
+```
+
+---
+
+### Chạy Evaluation (Bài Nhóm)
+
+```bash
+cd group_project
+python evaluation/eval_pipeline.py
+```
+
+Kết quả lưu tại `evaluation/results.md`.
+
+---
+
+### Troubleshooting
+
+| Lỗi | Nguyên nhân | Cách sửa |
+|-----|-------------|----------|
+| `No index available. Run task4 first.` | Chưa build FAISS index | Chạy `python -m src.task4_chunking_indexing` |
+| `ModuleNotFoundError: No module named 'faiss'` | Thiếu dependency | `pip install faiss-cpu` |
+| `Server offline` trên status bar | Flask chưa chạy | Chạy `python app.py` |
+| Chat trả về raw context thay vì câu trả lời | Chưa có `OPENAI_API_KEY` | Thêm key vào file `.env` |
+| Rerank dùng "score sort" thay vì Jina | Chưa có `JINA_API_KEY` | Thêm key vào file `.env` |
 
 ---
 
