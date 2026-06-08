@@ -45,3 +45,7 @@ def download_file(url: str, filename: str):
 
 if __name__ == "__main__":
     setup_directory()
+    download_file("https://example.com/luat-phong-chong-ma-tuy-2021.pdf", "luat_phong_chong_ma_tuy_2021.pdf")
+    download_file("https://datafiles.chinhphu.vn/cpp/files/vbpq/2021/12/105.signed_02.pdf","nghi_dinh_105_2021.pdf" )
+    download_file("https://datafiles.chinhphu.vn/cpp/files/vbpq/2025/9/135-vbhn-vpqh.pdf", "bo_luat_hinh_su_2015_sua_doi_2017.pdf")
+    download_file("https://datafiles.chinhphu.vn/cpp/files/vbpq/2022/08/57-cp.signed.pdf","nghi_dinh_57_2022.pdf" )
