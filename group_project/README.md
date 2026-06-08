@@ -182,7 +182,7 @@ run_dashboard()
 |-----------|------|----------|------------|
 | Phạm Thị Thắm | 2A202600789| FE kiêm api router be cơ bản | |
 | Hồ Thành Tiến | 2A202600868| Task service (mốc vào BE) từ task 1 -> task4 | |
-| Thắng | | Task service (nối tiếp task4) từ task 5 đêns task 8 | |
+| Nguyễn Trần Mạnh Thắng | 2A202600710 | Task service (nối tiếp task4) từ task 5 đêns task 8 | |
 | Trần Mạnh Chánh Quân | 2A202600786| task 9 10 | |
 | Nguyễn Thái Bảo | 2A202600763| merger code | |
 
