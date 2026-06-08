@@ -10,10 +10,12 @@ markitdown>=0.1.0
 
 # Task 4 - Chunking & Indexing
 langchain-text-splitters>=0.2.0
-sentence-transformers>=2.2.0
+sentence-transformers>=2.2.0   # Task 7 CrossEncoder
+transformers>=4.40.0
+torch>=2.0.0
 weaviate-client>=4.5.0
 # chromadb>=0.4.0        # Alternative
-# faiss-cpu>=1.7.4       # Alternative
+faiss-cpu>=1.7.4
 
 # Task 6 - BM25
 rank-bm25>=0.2.2

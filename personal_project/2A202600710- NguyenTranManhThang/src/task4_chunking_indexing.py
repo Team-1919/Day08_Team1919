@@ -24,7 +24,6 @@ FAISS_INDEX_DIR = DATA_DIR / "faiss_index"
 FAISS_INDEX_PATH = FAISS_INDEX_DIR / "index.faiss"
 FAISS_META_PATH = FAISS_INDEX_DIR / "meta.pkl"
 CHUNKS_CACHE_PATH = DATA_DIR / ".chunks_cache.pkl"
-BM25_CORPUS_PATH = DATA_DIR / "bm25_corpus.pkl"
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 80
@@ -147,13 +146,6 @@ def index_to_vectorstore(chunks: list[dict]):
     FAISS_META_PATH.write_bytes(pickle.dumps(meta))
 
 
-def save_bm25_corpus(chunks: list[dict]):
-    """Lưu corpus chunks cho BM25 tại data/bm25_corpus.pkl."""
-    corpus = [{"content": c["content"], "metadata": c["metadata"]} for c in chunks]
-    BM25_CORPUS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    BM25_CORPUS_PATH.write_bytes(pickle.dumps(corpus))
-
-
 def faiss_index_exists() -> bool:
     return FAISS_INDEX_PATH.exists() and FAISS_META_PATH.exists()
 
@@ -184,8 +176,10 @@ def run_pipeline(force_reindex: bool = False):
     index_to_vectorstore(chunks)
     print(f"[OK] Indexed to FAISS: {FAISS_INDEX_PATH}")
 
-    save_bm25_corpus(chunks)
-    print(f"[OK] Saved BM25 corpus: {BM25_CORPUS_PATH}")
+    from src.task6_lexical_search import build_and_save_bm25_corpus
+
+    build_and_save_bm25_corpus(chunks)
+    print("[OK] Saved BM25 corpus")
 
 
 if __name__ == "__main__":

@@ -1,15 +1,20 @@
 """
 Task 4 — Chunking & Indexing vào FAISS vector store.
 
-Stack: FAISS + sentence-transformers (paraphrase-multilingual-MiniLM-L12-v2)
+Stack: FAISS + paraphrase-multilingual-MiniLM-L12-v2 (transformers)
 - Multilingual model tốt cho tiếng Việt, ~471MB, 384 dim
 - FAISS đơn giản, chạy local, không cần Docker
 - Cache chunks + embeddings vào pickle để load nhanh cho test lặp lại
 """
 
+import os
 import pickle
 import sys
 from pathlib import Path
+
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 # Fix Windows encoding
 if sys.platform == "win32":
@@ -21,11 +26,16 @@ if sys.platform == "win32":
 import numpy as np
 
 STANDARDIZED_DIR = Path(__file__).parent.parent / "data" / "standardized"
-CACHE_DIR = Path(__file__).parent.parent / "data"
-CACHE_PATH = CACHE_DIR / ".chunks_cache.pkl"
-FAISS_INDEX_PATH = CACHE_DIR / ".faiss.index"
-FAISS_META_PATH = CACHE_DIR / ".faiss.meta.pkl"
+DATA_DIR = Path(__file__).parent.parent / "data"
+FAISS_INDEX_DIR = DATA_DIR / "faiss_index"
+FAISS_INDEX_PATH = FAISS_INDEX_DIR / "index.faiss"
+FAISS_META_PATH = FAISS_INDEX_DIR / "meta.pkl"
+CHUNKS_CACHE_PATH = DATA_DIR / ".chunks_cache.pkl"
+BM25_CORPUS_PATH = DATA_DIR / "bm25_corpus.pkl"
 
+# Backward-compatible aliases
+CACHE_DIR = DATA_DIR
+CACHE_PATH = CHUNKS_CACHE_PATH
 
 # =============================================================================
 # CONFIGURATION — Giải thích lựa chọn
@@ -105,47 +115,42 @@ def chunk_documents(documents: list[dict]) -> list[dict]:
     return chunks
 
 
+def embed_text(text: str) -> list[float]:
+    """Embed một đoạn text bằng model thống nhất."""
+    from src._embeddings import embed_text as _embed_text
+
+    return _embed_text(text)
+
+
 def embed_chunks(chunks: list[dict]) -> list[dict]:
     """
     Embed toàn bộ chunks bằng sentence-transformers.
     Caching: nếu chunks đã embed rồi, load từ cache.
     """
-    from sentence_transformers import SentenceTransformer
-
-    # Check cache
-    if CACHE_PATH.exists():
+    if CHUNKS_CACHE_PATH.exists():
         try:
-            cached = pickle.loads(CACHE_PATH.read_bytes())
-            # Verify cache cùng số chunks
-            if len(cached) == len(chunks):
-                # Quick verify content
-                if all(
-                    cached[i]["content"] == chunks[i]["content"]
-                    for i in range(min(3, len(chunks)))
-                ):
-                    print(f"  [OK] Loaded {len(cached)} chunks tu cache")
-                    return cached
+            cached = pickle.loads(CHUNKS_CACHE_PATH.read_bytes())
+            if len(cached) == len(chunks) and all(
+                cached[i]["content"] == chunks[i]["content"]
+                for i in range(min(3, len(chunks)))
+            ):
+                print(f"  [OK] Loaded {len(cached)} chunks tu cache")
+                return cached
         except Exception as e:
             print(f"  [WARN] Cache loi ({e}), re-embed...")
 
-    # Load model và embed
-    print(f"  Loading model: {EMBEDDING_MODEL}...")
-    model = SentenceTransformer(EMBEDDING_MODEL)
+    from src._embeddings import EMBEDDING_MODEL as _MODEL, encode_texts
+
+    print(f"  Loading model: {_MODEL}...")
     texts = [c["content"] for c in chunks]
-    embeddings = model.encode(
-        texts,
-        show_progress_bar=True,
-        batch_size=32,
-        normalize_embeddings=True,  # quan trọng cho cosine similarity
-    )
+    embeddings = encode_texts(texts, batch_size=32, show_progress=True)
 
     for chunk, emb in zip(chunks, embeddings):
-        chunk["embedding"] = emb.astype(np.float32).tolist()
+        chunk["embedding"] = emb.tolist()
 
-    # Save cache
-    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CACHE_PATH.write_bytes(pickle.dumps(chunks))
-    print(f"  [OK] Saved cache: {CACHE_PATH}")
+    CHUNKS_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CHUNKS_CACHE_PATH.write_bytes(pickle.dumps(chunks))
+    print(f"  [OK] Saved cache: {CHUNKS_CACHE_PATH}")
     return chunks
 
 
@@ -167,12 +172,24 @@ def index_to_vectorstore(chunks: list[dict]):
     index.add(embeddings)
     print(f"  [OK] FAISS index co {index.ntotal} vectors")
 
-    # Save
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    FAISS_INDEX_DIR.mkdir(parents=True, exist_ok=True)
     faiss.write_index(index, str(FAISS_INDEX_PATH))
-    FAISS_META_PATH.write_bytes(pickle.dumps(chunks))
+
+    meta = [{"content": c["content"], "metadata": c["metadata"]} for c in chunks]
+    FAISS_META_PATH.write_bytes(pickle.dumps(meta))
     print(f"  [OK] Saved FAISS index: {FAISS_INDEX_PATH}")
     print(f"  [OK] Saved metadata: {FAISS_META_PATH}")
+
+
+def save_bm25_corpus(chunks: list[dict]):
+    """Lưu corpus chunks cho BM25 tại data/bm25_corpus.pkl."""
+    corpus = [{"content": c["content"], "metadata": c["metadata"]} for c in chunks]
+    BM25_CORPUS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    BM25_CORPUS_PATH.write_bytes(pickle.dumps(corpus))
+
+
+def faiss_index_exists() -> bool:
+    return FAISS_INDEX_PATH.exists() and FAISS_META_PATH.exists()
 
 
 def run_pipeline(force_reindex: bool = False):
@@ -185,7 +202,7 @@ def run_pipeline(force_reindex: bool = False):
     print("=" * 50)
 
     if force_reindex:
-        for p in [CACHE_PATH, FAISS_INDEX_PATH, FAISS_META_PATH]:
+        for p in [CHUNKS_CACHE_PATH, FAISS_INDEX_PATH, FAISS_META_PATH, BM25_CORPUS_PATH]:
             if p.exists():
                 p.unlink()
         print("[OK] Cleared cache + FAISS index")
@@ -201,6 +218,9 @@ def run_pipeline(force_reindex: bool = False):
 
     index_to_vectorstore(chunks)
     print("[OK] Indexed to FAISS")
+
+    save_bm25_corpus(chunks)
+    print(f"[OK] Saved BM25 corpus: {BM25_CORPUS_PATH}")
 
 
 if __name__ == "__main__":
