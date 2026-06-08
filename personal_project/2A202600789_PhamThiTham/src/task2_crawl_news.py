@@ -26,10 +26,10 @@ def setup_directory():
 
 # TODO: Điền danh sách URL bài báo cần crawl
 ARTICLE_URLS = [
-    # Ví dụ:
-    # "https://vnexpress.net/...",
-    # "https://tuoitre.vn/...",
-    # "https://thanhnien.vn/...",
+    "https://vnexpress.net/ca-si-miu-le-bi-bat-voi-cao-buoc-to-chuc-su-dung-ma-tuy-5074769.html",
+    "https://thanhnien.vn/loat-on-ao-cua-long-nhat-truoc-khi-bi-bat-vi-lien-quan-den-ma-tuy-185260520125718027.htm",
+    "https://thanhnien.vn/ntk-nguyen-cong-tri-noi-tieng-ra-sao-truoc-khi-bi-bat-vi-lien-quan-ma-tuy-185250630003646693.htm",
+    "https://vov.vn/phap-luat/cu-truot-dai-cua-ca-si-chi-dan-khi-ru-re-nhom-ban-su-dung-ma-tuy-post1287890.vov"
 ]
 
 

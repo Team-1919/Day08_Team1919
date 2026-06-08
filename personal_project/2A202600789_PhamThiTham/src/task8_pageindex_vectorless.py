@@ -51,8 +51,8 @@ def upload_documents():
 
 def pageindex_search(query: str, top_k: int = 5) -> list[dict]:
     """
-    Vectorless retrieval sử dụng PageIndex.
-    Dùng làm fallback khi hybrid search không có kết quả tốt.
+    Vectorless retrieval: keyword overlap search trên standardized markdown files.
+    Mock implementation khi không có PageIndex API key.
 
     Args:
         query: Câu truy vấn
@@ -63,26 +63,58 @@ def pageindex_search(query: str, top_k: int = 5) -> list[dict]:
             'content': str,
             'score': float,
             'metadata': dict,
-            'source': 'pageindex'   # Đánh dấu nguồn retrieval
+            'source': 'pageindex'
         }
     """
-    # TODO: Implement PageIndex query
-    #
-    # from pageindex import PageIndex
-    #
-    # pi = PageIndex(api_key=PAGEINDEX_API_KEY)
-    # results = pi.query(query=query, top_k=top_k)
-    #
-    # return [
-    #     {
-    #         "content": r.text,
-    #         "score": r.score,
-    #         "metadata": r.metadata,
-    #         "source": "pageindex"
-    #     }
-    #     for r in results
-    # ]
-    raise NotImplementedError("Implement pageindex_search")
+    if PAGEINDEX_API_KEY:
+        try:
+            from pageindex import PageIndex  # type: ignore
+            pi = PageIndex(api_key=PAGEINDEX_API_KEY)
+            api_results = pi.query(query=query, top_k=top_k)
+            return [
+                {
+                    "content": r.text,
+                    "score": float(r.score),
+                    "metadata": r.metadata,
+                    "source": "pageindex",
+                }
+                for r in api_results
+            ]
+        except Exception:
+            pass  # Fall through to local mock
+
+    # Local mock: keyword overlap (Jaccard-like) trên markdown files
+    query_tokens = set(query.lower().split())
+    if not query_tokens:
+        return []
+
+    results = []
+    for md_file in STANDARDIZED_DIR.rglob("*.md"):
+        try:
+            content = md_file.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        paragraphs = [p.strip() for p in content.split("\n\n") if len(p.strip()) > 50]
+        for para in paragraphs:
+            para_tokens = set(para.lower().split())
+            overlap = len(query_tokens & para_tokens)
+            if overlap > 0:
+                score = overlap / (len(query_tokens) + len(para_tokens) - overlap + 1)
+                results.append(
+                    {
+                        "content": para[:600],
+                        "score": float(score),
+                        "metadata": {
+                            "source": md_file.name,
+                            "type": md_file.parent.name,
+                        },
+                        "source": "pageindex",
+                    }
+                )
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results[:top_k]
 
 
 if __name__ == "__main__":
