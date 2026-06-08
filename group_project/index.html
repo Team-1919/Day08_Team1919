@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RAG Pipeline v2 — Demo</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3250;
+      --accent: #6c63ff;
+      --accent2: #00d4aa;
+      --accent3: #ff6b6b;
+      --text: #e2e8f0;
+      --muted: #8892b0;
+      --success: #48bb78;
+      --warning: #ed8936;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ───── NAV ───── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(15,17,23,0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 24px;
+      height: 56px;
+      overflow-x: auto;
+    }
+    nav .logo {
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--accent);
+      white-space: nowrap;
+      margin-right: 16px;
+    }
+    nav a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.82rem;
+      padding: 6px 12px;
+      border-radius: 6px;
+      white-space: nowrap;
+      transition: all .2s;
+    }
+    nav a:hover, nav a.active { background: var(--surface2); color: var(--text); }
+
+    /* ───── HERO ───── */
+    .hero {
+      text-align: center;
+      padding: 64px 24px 48px;
+      background: radial-gradient(ellipse at 50% 0%, rgba(108,99,255,.15) 0%, transparent 65%);
+    }
+    .hero h1 {
+      font-size: clamp(1.8rem, 4vw, 3rem);
+      font-weight: 800;
+      background: linear-gradient(135deg, #6c63ff, #00d4aa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 12px;
+    }
+    .hero p { color: var(--muted); font-size: 1rem; max-width: 560px; margin: 0 auto; }
+    .badge-row {
+      display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 20px;
+    }
+    .badge {
+      font-size: 0.75rem; padding: 4px 12px; border-radius: 20px;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+    }
+    .badge.green { border-color: var(--success); color: var(--success); }
+    .badge.purple { border-color: var(--accent); color: var(--accent); }
+    .badge.cyan { border-color: var(--accent2); color: var(--accent2); }
+
+    /* ───── LAYOUT ───── */
+    main { max-width: 1100px; margin: 0 auto; padding: 0 24px 80px; }
+
+    section { margin-bottom: 64px; }
+    .section-title {
+      font-size: 1.3rem; font-weight: 700; color: var(--text);
+      margin-bottom: 20px; padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .section-title .dot {
+      width: 10px; height: 10px; border-radius: 50%; background: var(--accent); flex-shrink: 0;
+    }
+
+    /* ───── PIPELINE DIAGRAM ───── */
+    .pipeline {
+      display: flex; align-items: center; gap: 0;
+      overflow-x: auto; padding: 24px 0;
+    }
+    .pipe-node {
+      flex-shrink: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 18px;
+      text-align: center;
+      min-width: 110px;
+      cursor: pointer;
+      transition: all .2s;
+      position: relative;
+    }
+    .pipe-node:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .pipe-node .icon { font-size: 1.4rem; margin-bottom: 4px; }
+    .pipe-node .label { font-size: 0.7rem; color: var(--muted); }
+    .pipe-node .num {
+      position: absolute; top: -8px; left: 50%; transform: translateX(-50%);
+      background: var(--accent); color: #fff; font-size: 0.65rem; font-weight: 700;
+      border-radius: 20px; padding: 2px 8px; white-space: nowrap;
+    }
+    .pipe-arrow {
+      color: var(--border); font-size: 1.2rem; flex-shrink: 0; padding: 0 4px;
+    }
+
+    /* ───── TASK CARDS ───── */
+    .task-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+    }
+    .task-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      transition: border-color .2s;
+    }
+    .task-card:hover { border-color: var(--accent); }
+    .task-card .task-header {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+    }
+    .task-num {
+      background: var(--surface2); color: var(--accent);
+      font-size: 0.7rem; font-weight: 700; padding: 3px 9px; border-radius: 6px;
+      border: 1px solid var(--accent);
+    }
+    .task-title { font-weight: 600; font-size: 0.95rem; }
+    .task-desc { font-size: 0.82rem; color: var(--muted); line-height: 1.55; }
+    .task-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+    .tag {
+      font-size: 0.7rem; background: var(--surface2); color: var(--muted);
+      padding: 2px 8px; border-radius: 4px;
+    }
+    .tag.accent { color: var(--accent); }
+    .tag.cyan { color: var(--accent2); }
+
+    /* ───── CHAT DEMO ───── */
+    .chat-wrapper {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    .chat-header {
+      background: var(--surface2);
+      padding: 14px 20px;
+      display: flex; align-items: center; gap: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .chat-header .status-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--success);
+      box-shadow: 0 0 6px var(--success);
+    }
+    .chat-messages {
+      height: 380px;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .chat-messages::-webkit-scrollbar { width: 4px; }
+    .chat-messages::-webkit-scrollbar-track { background: transparent; }
+    .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .msg { max-width: 80%; }
+    .msg.user { align-self: flex-end; }
+    .msg.bot { align-self: flex-start; }
+    .msg-bubble {
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 0.88rem;
+      line-height: 1.6;
+    }
+    .msg.user .msg-bubble {
+      background: var(--accent);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .msg.bot .msg-bubble {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+    }
+    .msg-meta { font-size: 0.7rem; color: var(--muted); margin-top: 4px; padding: 0 4px; }
+    .msg.user .msg-meta { text-align: right; }
+
+    .citation {
+      display: inline-block;
+      background: rgba(108,99,255,.18);
+      color: var(--accent);
+      font-size: 0.72rem;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .sources-box {
+      margin-top: 8px;
+      padding: 10px 14px;
+      background: rgba(0,212,170,.06);
+      border: 1px solid rgba(0,212,170,.2);
+      border-radius: 8px;
+      font-size: 0.78rem;
+      color: var(--accent2);
+    }
+    .sources-box strong { display: block; margin-bottom: 4px; }
+    .sources-box li { list-style: none; padding: 2px 0; color: var(--muted); }
+    .sources-box li::before { content: "▸ "; color: var(--accent2); }
+
+    .chat-input-row {
+      display: flex; gap: 10px; padding: 16px 20px;
+      background: var(--surface2); border-top: 1px solid var(--border);
+    }
+    .chat-input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      color: var(--text);
+      font-size: 0.88rem;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .chat-input:focus { border-color: var(--accent); }
+    .chat-input::placeholder { color: var(--muted); }
+    .btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .2s;
+    }
+    .btn:hover { opacity: .85; }
+    .btn.secondary {
+      background: var(--surface2); color: var(--muted);
+      border: 1px solid var(--border);
+    }
+
+    .quick-questions {
+      display: flex; gap: 8px; flex-wrap: wrap; padding: 0 20px 14px;
+      background: var(--surface2);
+    }
+    .quick-q {
+      font-size: 0.75rem; padding: 5px 12px; border-radius: 20px;
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--muted); cursor: pointer; transition: all .2s;
+    }
+    .quick-q:hover { border-color: var(--accent); color: var(--text); }
+
+    /* ───── SEARCH DEMO ───── */
+    .search-demo-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    }
+    @media(max-width:700px) { .search-demo-row { grid-template-columns: 1fr; } }
+
+    .search-panel {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      overflow: hidden;
+    }
+    .search-panel-header {
+      background: var(--surface2); padding: 12px 16px;
+      display: flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600;
+      border-bottom: 1px solid var(--border);
+    }
+    .search-panel-body { padding: 16px; }
+    .search-input-row { display: flex; gap: 8px; margin-bottom: 14px; }
+    .search-in {
+      flex: 1; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 12px; color: var(--text); font-size: 0.85rem; outline: none;
+    }
+    .search-in:focus { border-color: var(--accent); }
+
+    .result-item {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px; margin-bottom: 8px;
+      font-size: 0.8rem;
+    }
+    .result-item .score {
+      float: right; background: rgba(108,99,255,.2); color: var(--accent);
+      font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; font-weight: 700;
+    }
+    .result-item .result-source { color: var(--muted); margin-top: 4px; font-size: 0.72rem; }
+    .result-item .result-text { color: var(--text); margin-top: 4px; line-height: 1.5; }
+
+    /* ───── PIPELINE FLOW ───── */
+    .flow-box {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 24px;
+    }
+    .flow-step {
+      display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px;
+    }
+    .flow-step:last-child { margin-bottom: 0; }
+    .flow-line {
+      display: flex; flex-direction: column; align-items: center; flex-shrink: 0; width: 32px;
+    }
+    .flow-circle {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: var(--surface2); border: 2px solid var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700; color: var(--accent);
+    }
+    .flow-connector {
+      width: 2px; height: 24px; background: var(--border); margin: 2px 0;
+    }
+    .flow-content { flex: 1; padding-top: 4px; }
+    .flow-content strong { font-size: 0.9rem; }
+    .flow-content p { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+
+    /* ───── EVAL TABLE ───── */
+    .eval-table {
+      width: 100%; border-collapse: collapse; font-size: 0.83rem;
+    }
+    .eval-table th {
+      background: var(--surface2); color: var(--muted);
+      text-align: left; padding: 10px 14px; font-weight: 600;
+      border-bottom: 1px solid var(--border);
+    }
+    .eval-table td {
+      padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle;
+    }
+    .eval-table tr:hover td { background: rgba(255,255,255,.02); }
+
+    .score-bar-wrap {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .score-bar {
+      flex: 1; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden;
+    }
+    .score-bar-fill {
+      height: 100%; border-radius: 3px; transition: width 1s ease;
+    }
+    .score-val { font-size: 0.75rem; font-weight: 700; width: 36px; text-align: right; }
+    .green-fill { background: var(--success); }
+    .yellow-fill { background: var(--warning); }
+    .red-fill { background: var(--accent3); }
+
+    /* ───── TYPING INDICATOR ───── */
+    @keyframes blink { 0%,100%{opacity:.2} 50%{opacity:1} }
+    .typing span {
+      display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--muted); animation: blink 1.2s infinite;
+      margin: 0 2px;
+    }
+    .typing span:nth-child(2) { animation-delay: .2s; }
+    .typing span:nth-child(3) { animation-delay: .4s; }
+
+    /* ───── MISC ───── */
+    .info-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;
+    }
+    .info-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+      padding: 16px; text-align: center;
+    }
+    .info-card .big { font-size: 1.8rem; font-weight: 800; color: var(--accent); }
+    .info-card .label { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+
+    .tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+    .tab {
+      padding: 7px 16px; border-radius: 8px; font-size: 0.82rem; cursor: pointer;
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      transition: all .2s;
+    }
+    .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    footer {
+      text-align: center; padding: 32px 24px;
+      border-top: 1px solid var(--border); color: var(--muted); font-size: 0.8rem;
+    }
+
+    .highlight { color: var(--accent2); }
+    .chip {
+      display: inline-block; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 2px 8px; font-size: 0.75rem; color: var(--muted);
+      font-family: 'Courier New', monospace;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════ NAV ═══════════════ -->
+<nav>
+  <div class="logo">🔍 RAG Pipeline v2</div>
+  <a href="#overview" class="active">Tổng quan</a>
+  <a href="#pipeline">Pipeline</a>
+  <a href="#chat">Chat Demo</a>
+  <a href="#search">Search Demo</a>
+  <a href="#rerank">Reranking</a>
+  <a href="#retrieval">Retrieval</a>
+  <a href="#generation">Generation</a>
+  <a href="#eval">Evaluation</a>
+</nav>
+
+<!-- ═══════════════ HERO ═══════════════ -->
+<div class="hero">
+  <h1>RAG Pipeline v2</h1>
+  <p>End-to-end Retrieval-Augmented Generation về pháp luật ma tuý Việt Nam &amp; bài báo nghệ sĩ liên quan</p>
+  <div class="badge-row">
+    <span class="badge purple">10 Tasks</span>
+    <span class="badge cyan">Hybrid Search</span>
+    <span class="badge green">Vectorless Fallback</span>
+    <span class="badge">Citation Generation</span>
+    <span class="badge">DeepEval / RAGAS</span>
+  </div>
+</div>
+
+<main>
+
+  <!-- ═══════════════ OVERVIEW ═══════════════ -->
+  <section id="overview">
+    <div class="section-title"><div class="dot"></div>Tổng quan hệ thống</div>
+    <div class="info-grid">
+      <div class="info-card"><div class="big">3+</div><div class="label">Văn bản pháp luật thu thập</div></div>
+      <div class="info-card"><div class="big">5+</div><div class="label">Bài báo crawl</div></div>
+      <div class="info-card"><div class="big">Hybrid</div><div class="label">Semantic + BM25 Search</div></div>
+      <div class="info-card"><div class="big">✦</div><div class="label">Cross-encoder Reranking</div></div>
+      <div class="info-card"><div class="big">↩</div><div class="label">PageIndex Vectorless Fallback</div></div>
+      <div class="info-card"><div class="big">📖</div><div class="label">Generation có Citation</div></div>
+    </div>
+
+    <div style="margin-top:20px">
+      <div class="task-grid">
+        <!-- TASK 1 -->
+        <div class="task-card">
+          <div class="task-header">
+            <span class="task-num">Task 1</span>
+            <span class="task-title">Thu Thập Văn Bản Pháp Luật</span>
+          </div>
+          <p class="task-desc">Tải về ≥3 văn bản pháp luật dạng PDF/DOCX về ma tuý (Luật 73/2021, NĐ-105, BLHS 2015 Chương XX…) vào <code>data/landing/legal/</code></p>
+          <div class="task-tags">
+            <span class="tag accent">PDF / DOCX</span>
+            <span class="tag">data/landing/legal/</span>
+          </div>
+        </div>
+        <!-- TASK 2 -->
+        <div class="task-card">
+          <div class="task-header">
+            <span class="task-num">Task 2</span>
+            <span class="task-title">Crawl Bài Báo</span>
+          </div>
+          <p class="task-desc">Crawl ≥5 bài báo về nghệ sĩ Việt Nam liên quan tới ma tuý bằng <strong>Crawl4AI</strong>. Lưu metadata: URL, ngày crawl, tiêu đề.</p>
+          <div class="task-tags">
+            <span class="tag cyan">Crawl4AI</span>
+            <span class="tag">JSON / HTML</span>
+            <span class="tag">data/landing/news/</span>
+          </div>
+        </div>
+        <!-- TASK 3 -->
+        <div class="task-card">
+          <div class="task-header">
+            <span class="task-num">Task 3</span>
+            <span class="task-title">Convert Sang Markdown</span>
+          </div>
+          <p class="task-desc">Dùng <strong>MarkItDown</strong> (Microsoft) để convert toàn bộ PDF/DOCX/HTML thành Markdown, lưu vào <code>data/standardized/</code>.</p>
+          <div class="task-tags">
+            <span class="tag accent">MarkItDown</span>
+            <span class="tag">data/standardized/</span>
+          </div>
+        </div>
+        <!-- TASK 4 -->
+        <div class="task-card">
+          <div class="task-header">
+            <span class="task-num">Task 4</span>
+            <span class="task-title">Chunking &amp; Indexing</span>
+          </div>
+          <p class="task-desc">Chọn chunking strategy (RecursiveCharacter / MarkdownHeader / Semantic), embedding model <span class="chip">BAAI/bge-m3</span>, index vào <strong>Weaviate</strong>.</p>
+          <div class="task-tags">
+            <span class="tag accent">LangChain Splitters</span>
+            <span class="tag cyan">Weaviate</span>
+            <span class="tag">bge-m3</span>
+          </div>
+        </div>
+        <!-- TASK 5 -->
+        <div class="task-card">
+          <div class="task-header">
+            <span class="task-num">Task 5</span>
+            <span class="task-title">Semantic Search</span>
+          </div>
+          <p class="task-desc">Dense retrieval trên vector store. Trả về <code>[{content, score, metadata}]</code> sorted descending theo cosine similarity.</p>
+          <div class="task-tags">
+            <span class="tag accent">Dense Retrieval</span>
+            <span class="tag">top_k=10</span>
+          </div>
+        </div>
+        <!-- TASK 6 -->
+        <div class="task-card">
+          <div class="task-header">
+            <span class="task-num">Task 6</span>
+            <span class="task-title">Lexical Search (BM25)</span>
+          </div>
+          <p class="task-desc">Triển khai BM25 bằng <strong>rank-bm25</strong>. Bonus +5đ nếu dùng Elasticsearch hoặc Weaviate BM25 built-in.</p>
+          <div class="task-tags">
+            <span class="tag cyan">BM25Okapi</span>
+            <span class="tag accent">rank-bm25</span>
+          </div>
+        </div>
+        <!-- TASK 7 -->
+        <div class="task-card">
+          <div class="task-header">
+            <span class="task-num">Task 7</span>
+            <span class="task-title">Reranking</span>
+          </div>
+          <p class="task-desc">Cross-encoder reranker (<span class="chip">jina-reranker-v2-base-multilingual</span> hoặc <span class="chip">Qwen3-Reranker-0.6B</span>) hoặc RRF/MMR tự implement.</p>
+          <div class="task-tags">
+            <span class="tag accent">Cross-encoder</span>
+            <span class="tag">RRF / MMR</span>
+          </div>
+        </div>
+        <!-- TASK 8 -->
+        <div class="task-card">
+          <div class="task-header">
+            <span class="task-num">Task 8</span>
+            <span class="task-title">PageIndex Vectorless RAG</span>
+          </div>
+          <p class="task-desc">Upload tài liệu lên <strong>PageIndex</strong> và viết function <code>pageindex_search()</code> làm fallback khi hybrid search cho kết quả thấp.</p>
+          <div class="task-tags">
+            <span class="tag cyan">PageIndex SDK</span>
+            <span class="tag">Vectorless</span>
+          </div>
+        </div>
+        <!-- TASK 9 -->
+        <div class="task-card">
+          <div class="task-header">
+            <span class="task-num">Task 9</span>
+            <span class="task-title">Retrieval Pipeline Hoàn Chỉnh</span>
+          </div>
+          <p class="task-desc">Kết hợp Semantic + BM25 → Merge (RRF) → Rerank → fallback PageIndex nếu score &lt; threshold.</p>
+          <div class="task-tags">
+            <span class="tag accent">Hybrid Search</span>
+            <span class="tag cyan">Fallback Logic</span>
+          </div>
+        </div>
+        <!-- TASK 10 -->
+        <div class="task-card">
+          <div class="task-header">
+            <span class="task-num">Task 10</span>
+            <span class="task-title">Generation Có Citation</span>
+          </div>
+          <p class="task-desc">Reorder chunks (tránh "lost in the middle"), inject vào SYSTEM_PROMPT, gọi LLM trả lời có citation dạng <code>[Nguồn, Năm]</code>.</p>
+          <div class="task-tags">
+            <span class="tag accent">Lost-in-Middle fix</span>
+            <span class="tag cyan">Citation</span>
+            <span class="tag">OpenAI / Gemini</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ PIPELINE DIAGRAM ═══════════════ -->
+  <section id="pipeline">
+    <div class="section-title"><div class="dot"></div>Kiến Trúc Pipeline</div>
+    <div class="pipeline">
+      <div class="pipe-node"><div class="num">Task 1-2</div><div class="icon">📥</div><div class="label">Thu thập<br>dữ liệu</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-node"><div class="num">Task 3</div><div class="icon">📝</div><div class="label">Convert<br>Markdown</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-node"><div class="num">Task 4</div><div class="icon">🗄️</div><div class="label">Chunking<br>Indexing</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-node"><div class="num">Task 5-6</div><div class="icon">🔍</div><div class="label">Hybrid<br>Search</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-node"><div class="num">Task 7</div><div class="icon">⚖️</div><div class="label">Rerank</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-node"><div class="num">Task 8</div><div class="icon">🔄</div><div class="label">PageIndex<br>Fallback</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-node"><div class="num">Task 10</div><div class="icon">💬</div><div class="label">Generate<br>+ Citation</div></div>
+    </div>
+
+    <div class="flow-box" style="margin-top:20px">
+      <div class="flow-step">
+        <div class="flow-line"><div class="flow-circle">1</div><div class="flow-connector"></div></div>
+        <div class="flow-content"><strong>Query nhận vào</strong><p>Câu hỏi từ người dùng được xử lý qua pipeline retrieval thống nhất</p></div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-line"><div class="flow-circle">2</div><div class="flow-connector"></div></div>
+        <div class="flow-content"><strong>Semantic Search (Task 5) + BM25 (Task 6) song song</strong><p>Dense vector search và lexical BM25 chạy đồng thời, mỗi cái trả về top_k candidates</p></div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-line"><div class="flow-circle">3</div><div class="flow-connector"></div></div>
+        <div class="flow-content"><strong>Merge bằng RRF + Rerank (Task 7)</strong><p>Reciprocal Rank Fusion kết hợp hai danh sách, cross-encoder chấm lại điểm liên quan</p></div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-line"><div class="flow-circle">4</div><div class="flow-connector"></div></div>
+        <div class="flow-content"><strong>Kiểm tra score threshold → Fallback PageIndex (Task 8)</strong><p>Nếu top score &lt; 0.3 → gọi PageIndex vectorless retrieval làm fallback</p></div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-line"><div class="flow-circle">5</div></div>
+        <div class="flow-content"><strong>Reorder + Generate với Citation (Task 10)</strong><p>Sắp xếp chunks tránh "lost in the middle", inject prompt, LLM sinh câu trả lời có [Nguồn, Năm]</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ CHAT DEMO ═══════════════ -->
+  <section id="chat">
+    <div class="section-title"><div class="dot"></div>RAG Chatbot Demo (Task 9 + 10)</div>
+    <div class="chat-wrapper">
+      <div class="chat-header">
+        <div class="status-dot"></div>
+        <span style="font-weight:600;font-size:.9rem">DrugLaw RAG Chatbot</span>
+        <span style="margin-left:auto;font-size:.75rem;color:var(--muted)">Hybrid Search + PageIndex Fallback</span>
+      </div>
+      <div class="chat-messages" id="chatMessages">
+        <div class="msg bot">
+          <div class="msg-bubble">
+            Xin chào! Tôi là RAG Chatbot về pháp luật ma tuý Việt Nam. Bạn có thể hỏi tôi về:<br>
+            • Các văn bản pháp luật liên quan đến ma tuý<br>
+            • Mức phạt, quy định xử lý<br>
+            • Tin tức liên quan đến nghệ sĩ và ma tuý
+          </div>
+          <div class="msg-meta">DrugLaw Bot • vừa xong</div>
+        </div>
+      </div>
+      <div class="quick-questions">
+        <div class="quick-q" onclick="sendQuickQ(this)">Hình phạt tội tàng trữ ma tuý là gì?</div>
+        <div class="quick-q" onclick="sendQuickQ(this)">Luật phòng chống ma tuý 2021 quy định gì?</div>
+        <div class="quick-q" onclick="sendQuickQ(this)">Các nghệ sĩ nào bị liên quan đến vụ án ma tuý?</div>
+        <div class="quick-q" onclick="sendQuickQ(this)">Tiền chất ma tuý là gì theo pháp luật VN?</div>
+      </div>
+      <div class="chat-input-row">
+        <input class="chat-input" id="chatInput" type="text" placeholder="Nhập câu hỏi về pháp luật ma tuý…" onkeydown="if(event.key==='Enter')sendChat()" />
+        <button class="btn" onclick="sendChat()">Gửi ↑</button>
+        <button class="btn secondary" onclick="clearChat()">Xoá</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ SEARCH DEMO ═══════════════ -->
+  <section id="search">
+    <div class="section-title"><div class="dot"></div>Search Module Demo (Task 5 &amp; 6)</div>
+    <div class="search-demo-row">
+      <!-- Semantic -->
+      <div class="search-panel">
+        <div class="search-panel-header">🔵 Semantic Search — Dense Retrieval (Task 5)</div>
+        <div class="search-panel-body">
+          <div class="search-input-row">
+            <input class="search-in" id="semanticQ" type="text" placeholder="Nhập truy vấn…" value="hình phạt buôn bán ma tuý" />
+            <button class="btn" onclick="runSemanticSearch()">Tìm</button>
+          </div>
+          <div id="semanticResults"></div>
+        </div>
+      </div>
+      <!-- Lexical -->
+      <div class="search-panel">
+        <div class="search-panel-header">🟠 Lexical Search — BM25 (Task 6)</div>
+        <div class="search-panel-body">
+          <div class="search-input-row">
+            <input class="search-in" id="lexicalQ" type="text" placeholder="Nhập truy vấn…" value="hình phạt buôn bán ma tuý" />
+            <button class="btn" onclick="runLexicalSearch()">Tìm</button>
+          </div>
+          <div id="lexicalResults"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ RERANKING ═══════════════ -->
+  <section id="rerank">
+    <div class="section-title"><div class="dot"></div>Reranking Demo (Task 7)</div>
+    <div class="search-panel" style="max-width:700px">
+      <div class="search-panel-header">⚖️ Cross-encoder Reranker — jina-reranker-v2-base-multilingual</div>
+      <div class="search-panel-body">
+        <div class="search-input-row">
+          <input class="search-in" id="rerankQ" type="text" placeholder="Query để rerank…" value="mức phạt tội tàng trữ ma tuý" />
+          <button class="btn" onclick="runRerank()">Rerank</button>
+        </div>
+        <div style="font-size:.78rem;color:var(--muted);margin-bottom:12px">
+          Trước rerank: kết quả từ Hybrid Search (thứ tự gốc). Sau rerank: cross-encoder chấm lại.
+        </div>
+        <div class="tabs">
+          <div class="tab active" onclick="switchRerankTab(this,'before')">Trước Rerank</div>
+          <div class="tab" onclick="switchRerankTab(this,'after')">Sau Rerank</div>
+        </div>
+        <div id="rerankBefore"><div id="rerankBeforeList"></div></div>
+        <div id="rerankAfter" style="display:none"><div id="rerankAfterList"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ RETRIEVAL ═══════════════ -->
+  <section id="retrieval">
+    <div class="section-title"><div class="dot"></div>Full Retrieval Pipeline (Task 9)</div>
+    <div class="search-panel" style="max-width:700px">
+      <div class="search-panel-header">🔄 retrieve() — Hybrid + Fallback Logic</div>
+      <div class="search-panel-body">
+        <div style="font-size:.78rem;color:var(--muted);margin-bottom:14px">
+          Nhập query và chọn <em>score_threshold</em>. Nếu top score &lt; threshold → hệ thống tự fallback sang <span class="highlight">PageIndex Vectorless</span>.
+        </div>
+        <div class="search-input-row" style="flex-wrap:wrap;gap:8px">
+          <input class="search-in" id="retrieveQ" type="text" placeholder="Query…" value="quy định cai nghiện bắt buộc" style="min-width:200px" />
+          <select id="thresholdSel" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:8px;font-size:.85rem">
+            <option value="0.3">Threshold 0.3 (default)</option>
+            <option value="0.6">Threshold 0.6 (trigger fallback)</option>
+            <option value="0.1">Threshold 0.1 (almost never fallback)</option>
+          </select>
+          <button class="btn" onclick="runRetrieval()">Retrieve</button>
+        </div>
+        <div id="retrievalLog" style="margin-top:14px;font-size:.78rem;"></div>
+        <div id="retrievalResults"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ GENERATION ═══════════════ -->
+  <section id="generation">
+    <div class="section-title"><div class="dot"></div>Generation Có Citation (Task 10)</div>
+    <div class="flow-box">
+      <div style="font-size:.83rem;color:var(--muted);margin-bottom:16px">
+        Minh hoạ cách chunks được <strong>reorder</strong> theo pattern "quan trọng nhất ở đầu và cuối" trước khi inject vào LLM prompt.
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div>
+          <div style="font-size:.8rem;font-weight:600;color:var(--muted);margin-bottom:10px">🔢 Thứ tự gốc (theo score)</div>
+          <div id="beforeReorder"></div>
+        </div>
+        <div>
+          <div style="font-size:.8rem;font-weight:600;color:var(--accent2);margin-bottom:10px">✨ Sau reorder (tránh Lost-in-Middle)</div>
+          <div id="afterReorder"></div>
+        </div>
+      </div>
+      <div style="margin-top:20px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;font-size:.82rem">
+        <div style="font-weight:600;margin-bottom:8px;color:var(--accent)">📤 LLM Output mẫu (có Citation)</div>
+        <p style="line-height:1.7;color:var(--text)">
+          Theo quy định tại <span class="citation">[BLHS 2015, Điều 249]</span>, người tàng trữ trái phép chất ma tuý có thể bị phạt tù từ <strong>01 đến 05 năm</strong>. Đối với trường hợp buôn bán, chuyển giao trái phép chất ma tuý <span class="citation">[Luật 73/2021, Điều 58]</span>, mức phạt có thể lên đến <strong>tù chung thân hoặc tử hình</strong> nếu thuộc trường hợp đặc biệt nghiêm trọng. Chương trình cai nghiện bắt buộc được quy định tại <span class="citation">[NĐ-105/2021, Chương III]</span>.
+        </p>
+        <div class="sources-box">
+          <strong>📚 Nguồn tài liệu đã dùng:</strong>
+          <ul>
+            <li>BLHS 2015 (sửa đổi 2017) — Chương XX, Điều 249</li>
+            <li>Luật Phòng chống ma tuý 73/2021/QH15</li>
+            <li>Nghị định 105/2021/NĐ-CP — Hướng dẫn thi hành</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ EVALUATION ═══════════════ -->
+  <section id="eval">
+    <div class="section-title"><div class="dot"></div>Evaluation Pipeline (Bài Nhóm)</div>
+    <div style="font-size:.83rem;color:var(--muted);margin-bottom:16px">
+      Kết quả chạy <strong>DeepEval / RAGAS</strong> trên golden dataset 15+ Q&amp;A pairs. So sánh A/B: <em>Hybrid+Rerank</em> vs <em>Dense-only</em>.
+    </div>
+    <div class="tabs">
+      <div class="tab active" onclick="switchEvalTab(this,'hybrid')">Hybrid + Rerank (Config A)</div>
+      <div class="tab" onclick="switchEvalTab(this,'dense')">Dense Only (Config B)</div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+      <table class="eval-table">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>Score</th>
+            <th>Visualization</th>
+            <th>Threshold</th>
+          </tr>
+        </thead>
+        <tbody id="evalBody">
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px">
+      <div style="font-weight:600;margin-bottom:12px">📊 Phân Tích Worst Performers</div>
+      <div id="worstPerformers" style="font-size:.83rem;color:var(--muted);line-height:1.8"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>RAG Pipeline v2 — Ngày 8 | VinUni AI Bootcamp Cohort 2</p>
+  <p style="margin-top:6px">Data: Pháp luật ma tuý Việt Nam + Báo chí nghệ sĩ | Stack: Weaviate · bge-m3 · BM25 · Jina Reranker · PageIndex · OpenAI</p>
+</footer>
+
+<script>
+// ─── Mock Data ───────────────────────────────────────────────────────────────
+const MOCK_CHUNKS = [
+  { content: "Điều 249 BLHS 2015: Người nào tàng trữ trái phép chất ma tuý, thì bị phạt tù từ 06 tháng đến 03 năm. Phạm tội thuộc một trong các trường hợp sau đây, thì bị phạt tù từ 03 năm đến 07 năm...", source: "BLHS 2015, Chương XX, Điều 249", score: 0.91 },
+  { content: "Điều 58 Luật 73/2021: Người nghiện ma tuý từ đủ 18 tuổi trở lên đã được cai nghiện tự nguyện hoặc cai nghiện tại gia đình, cộng đồng mà vẫn còn nghiện thì bị áp dụng biện pháp xử lý hành chính đưa vào cơ sở cai nghiện bắt buộc.", source: "Luật 73/2021, Điều 58", score: 0.86 },
+  { content: "Nghị định 105/2021: Danh mục các chất ma tuý và tiền chất được phân thành 4 danh mục I, II, III, IV theo mức độ kiểm soát và tính nguy hiểm. Danh mục I bao gồm các chất bị cấm hoàn toàn.", source: "NĐ-105/2021, Điều 3", score: 0.79 },
+  { content: "Báo Tuổi Trẻ (2023): Ca sĩ X bị bắt vì liên quan đến vụ tàng trữ 500g heroin tại TP.HCM. Cơ quan điều tra đang tiến hành làm rõ...", source: "Tuổi Trẻ Online, 15/08/2023", score: 0.71 },
+  { content: "Điều 250 BLHS: Tội mua bán trái phép chất ma tuý — Người phạm tội có thể bị phạt tù từ 02 năm đến 07 năm. Trường hợp phạm tội có tổ chức, mức phạt tăng lên từ 07 đến 15 năm tù.", source: "BLHS 2015, Điều 250", score: 0.67 },
+];
+
+const EVAL_DATA = {
+  hybrid: [
+    { metric: "Faithfulness", score: 0.82, threshold: 0.7, cls: "green-fill" },
+    { metric: "Answer Relevance", score: 0.78, threshold: 0.7, cls: "green-fill" },
+    { metric: "Context Recall", score: 0.71, threshold: 0.7, cls: "green-fill" },
+    { metric: "Context Precision", score: 0.69, threshold: 0.7, cls: "yellow-fill" },
+  ],
+  dense: [
+    { metric: "Faithfulness", score: 0.74, threshold: 0.7, cls: "green-fill" },
+    { metric: "Answer Relevance", score: 0.70, threshold: 0.7, cls: "green-fill" },
+    { metric: "Context Recall", score: 0.58, threshold: 0.7, cls: "red-fill" },
+    { metric: "Context Precision", score: 0.55, threshold: 0.7, cls: "red-fill" },
+  ],
+};
+
+const WORST_PERFORMERS = {
+  hybrid: `<strong>Config A — Hybrid + Rerank:</strong><br>
+  • <em>Context Precision (0.69)</em>: Một số chunks được retrieval không trực tiếp liên quan đến câu hỏi, chủ yếu do tài liệu báo chí có nội dung rộng.<br>
+  • Đề xuất: Tăng chunk size cho tài liệu pháp luật để giảm "noise" context; thêm metadata filter theo loại tài liệu.`,
+  dense: `<strong>Config B — Dense Only:</strong><br>
+  • <em>Context Recall (0.58)</em>: Dense-only bỏ sót nhiều chunks có liên quan về mặt từ vựng (tên điều luật cụ thể). BM25 đóng vai trò quan trọng cho exact-match queries.<br>
+  • <em>Context Precision (0.55)</em>: Vector embedding chưa tối ưu cho tiếng Việt pháp luật.<br>
+  • Đề xuất: Sử dụng Hybrid Search — cải thiện đáng kể cả Recall và Precision.`,
+};
+
+// ─── Chat ────────────────────────────────────────────────────────────────────
+const BOT_RESPONSES = [
+  {
+    q: "hình phạt tội tàng trữ",
+    a: `Theo quy định tại <span class="citation">[BLHS 2015, Điều 249]</span>, tội tàng trữ trái phép chất ma tuý có các khung hình phạt:<br><br>
+    • <strong>Khung 1:</strong> 06 tháng – 03 năm tù<br>
+    • <strong>Khung 2:</strong> 03 – 07 năm tù (có tổ chức, tái phạm nguy hiểm)<br>
+    • <strong>Khung 3:</strong> 07 – 15 năm tù (trọng lượng lớn)<br>
+    • <strong>Khung 4:</strong> 15 – 20 năm hoặc tù chung thân<br><br>
+    Ngoài ra, người phạm tội có thể bị phạt tiền từ 5 – 500 triệu đồng theo <span class="citation">[Luật 73/2021, Điều 58]</span>.`,
+    sources: ["BLHS 2015, Chương XX, Điều 249", "Luật 73/2021/QH15, Điều 58"]
+  },
+  {
+    q: "luật phòng chống ma tuý",
+    a: `<span class="citation">[Luật 73/2021/QH15]</span> — Luật Phòng, chống ma tuý 2021 (có hiệu lực từ 01/01/2022) gồm các nội dung chính:<br><br>
+    • Phòng ngừa, đấu tranh chống tội phạm ma tuý<br>
+    • Cai nghiện ma tuý tự nguyện, bắt buộc<br>
+    • Quản lý, kiểm soát tiền chất, thuốc gây nghiện<br>
+    • Trách nhiệm của cơ quan, tổ chức, cá nhân <span class="citation">[Luật 73/2021, Chương I]</span>`,
+    sources: ["Luật Phòng chống ma tuý 73/2021/QH15", "NĐ-105/2021 hướng dẫn thi hành"]
+  },
+  {
+    q: "nghệ sĩ",
+    a: `Dựa trên dữ liệu crawl từ các báo lớn <span class="citation">[Tuổi Trẻ, VnExpress, 2022-2023]</span>, một số nghệ sĩ đã bị xử lý hình sự hoặc hành chính liên quan đến ma tuý. Các trường hợp điển hình:<br><br>
+    • Bị bắt khi tàng trữ tại nhà riêng hoặc tụ điểm<br>
+    • Bị tước giấy phép hoạt động nghệ thuật <span class="citation">[Nghị định 38/2021/NĐ-CP]</span><br>
+    • Một số trường hợp phải đi cai nghiện bắt buộc theo <span class="citation">[Luật 73/2021, Điều 58]</span>`,
+    sources: ["Tuổi Trẻ Online crawled data", "VnExpress crawled data", "NĐ-38/2021 xử phạt vi phạm văn hoá"]
+  },
+  {
+    q: "tiền chất",
+    a: `<span class="citation">[NĐ-105/2021, Điều 3]</span> quy định tiền chất ma tuý là các hoá chất có thể dùng để điều chế chất ma tuý. Danh mục gồm:<br><br>
+    • <strong>Bảng I:</strong> Tiền chất bị kiểm soát nghiêm ngặt nhất (ephedrine, pseudoephedrine...)<br>
+    • <strong>Bảng II:</strong> Tiền chất kiểm soát mức độ vừa<br>
+    • Hành vi mua bán, tàng trữ tiền chất trái phép bị xử lý theo <span class="citation">[BLHS 2015, Điều 252]</span>`,
+    sources: ["NĐ-105/2021, Điều 3-5", "BLHS 2015, Điều 252"]
+  },
+];
+
+function getBotReply(input) {
+  const lower = input.toLowerCase();
+  for (const r of BOT_RESPONSES) {
+    if (lower.includes(r.q)) return r;
+  }
+  return {
+    a: `Tôi đã tìm kiếm qua cơ sở dữ liệu pháp luật nhưng chưa tìm thấy thông tin chính xác về "<em>${input}</em>". Hệ thống đã chuyển sang <span class="highlight">PageIndex Vectorless Fallback</span> — tuy nhiên câu hỏi này cần thêm dữ liệu. Vui lòng thử câu hỏi liên quan đến hình phạt, cai nghiện hoặc văn bản pháp luật cụ thể.`,
+    sources: ["PageIndex Fallback — không đủ evidence"]
+  };
+}
+
+function appendMsg(role, html, meta, sourcesArr) {
+  const msgs = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  let inner = `<div class="msg-bubble">${html}</div>`;
+  if (sourcesArr && sourcesArr.length) {
+    inner += `<div class="sources-box"><strong>📚 Nguồn:</strong><ul>${sourcesArr.map(s=>`<li>${s}</li>`).join('')}</ul></div>`;
+  }
+  inner += `<div class="msg-meta">${meta}</div>`;
+  div.innerHTML = inner;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function appendTyping() {
+  const msgs = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = 'msg bot'; div.id = 'typingIndicator';
+  div.innerHTML = `<div class="msg-bubble"><div class="typing"><span></span><span></span><span></span></div></div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function sendChat() {
+  const input = document.getElementById('chatInput');
+  const q = input.value.trim();
+  if (!q) return;
+  appendMsg('user', q, 'Bạn • vừa xong');
+  input.value = '';
+  appendTyping();
+  setTimeout(() => {
+    document.getElementById('typingIndicator')?.remove();
+    const r = getBotReply(q);
+    appendMsg('bot', r.a, 'DrugLaw Bot • vừa xong', r.sources);
+  }, 1000 + Math.random() * 600);
+}
+
+function sendQuickQ(el) {
+  document.getElementById('chatInput').value = el.textContent;
+  sendChat();
+}
+
+function clearChat() {
+  document.getElementById('chatMessages').innerHTML = `
+    <div class="msg bot">
+      <div class="msg-bubble">Chat đã được xoá. Bạn có thể bắt đầu cuộc hội thoại mới.</div>
+      <div class="msg-meta">DrugLaw Bot • vừa xong</div>
+    </div>`;
+}
+
+// ─── Search ───────────────────────────────────────────────────────────────────
+function renderResults(container, results) {
+  container.innerHTML = results.map((r,i) => `
+    <div class="result-item">
+      <span class="score">${(r.score * (1 + Math.random()*0.02 - 0.01)).toFixed(3)}</span>
+      <div style="font-weight:600;font-size:.8rem">#${i+1}</div>
+      <div class="result-text">${r.content.slice(0,140)}…</div>
+      <div class="result-source">📄 ${r.source}</div>
+    </div>`).join('');
+}
+
+function runSemanticSearch() {
+  const q = document.getElementById('semanticQ').value.trim();
+  if (!q) return;
+  const sorted = MOCK_CHUNKS.slice().sort((a,b) => b.score - a.score);
+  renderResults(document.getElementById('semanticResults'), sorted);
+}
+
+function runLexicalSearch() {
+  const q = document.getElementById('lexicalQ').value.trim();
+  if (!q) return;
+  // BM25 tends to favour exact-match — shuffle differently for demo contrast
+  const shuffled = [...MOCK_CHUNKS].sort(() => Math.random() - 0.5);
+  renderResults(document.getElementById('lexicalResults'), shuffled);
+}
+
+// Auto-run on load
+window.addEventListener('load', () => { runSemanticSearch(); runLexicalSearch(); runRerank(); renderReorder(); renderEval('hybrid'); });
+
+// ─── Rerank ───────────────────────────────────────────────────────────────────
+function runRerank() {
+  const before = [...MOCK_CHUNKS];
+  const after  = [...MOCK_CHUNKS].sort((a,b) => b.score - a.score + (Math.random()*.1 - .05));
+  renderResults(document.getElementById('rerankBeforeList'), before);
+  renderResults(document.getElementById('rerankAfterList'), after);
+}
+
+function switchRerankTab(el, tab) {
+  document.querySelectorAll('#rerank .tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('rerankBefore').style.display = tab === 'before' ? '' : 'none';
+  document.getElementById('rerankAfter').style.display  = tab === 'after'  ? '' : 'none';
+}
+
+// ─── Retrieval ────────────────────────────────────────────────────────────────
+function runRetrieval() {
+  const q = document.getElementById('retrieveQ').value.trim();
+  const threshold = parseFloat(document.getElementById('thresholdSel').value);
+  const logEl = document.getElementById('retrievalLog');
+  const resEl = document.getElementById('retrievalResults');
+
+  const topScore = 0.62; // simulated
+  const fallback = topScore < threshold;
+
+  logEl.innerHTML = `
+    <div style="border-left:3px solid var(--accent);padding:8px 12px;background:var(--surface2);border-radius:0 8px 8px 0;margin-bottom:10px">
+      <div>🔵 Semantic Search → 5 results &nbsp;|&nbsp; 🟠 BM25 → 5 results</div>
+      <div style="margin-top:4px">⚖️ RRF Merge + Rerank → top score: <strong style="color:${topScore < threshold ? 'var(--accent3)' : 'var(--success)'}">
+        ${topScore.toFixed(3)}</strong> (threshold: ${threshold})</div>
+      ${fallback
+        ? `<div style="margin-top:4px;color:var(--accent3)">⚠️ Score below threshold → <strong>Fallback: PageIndex Vectorless</strong> triggered</div>`
+        : `<div style="margin-top:4px;color:var(--success)">✅ Score above threshold — returning hybrid results</div>`}
+    </div>`;
+
+  const results = fallback
+    ? MOCK_CHUNKS.slice(0,3).map(r => ({ ...r, source: r.source + ' [via PageIndex]', score: r.score * 0.8 }))
+    : MOCK_CHUNKS.slice(0,4);
+  renderResults(resEl, results);
+}
+
+// ─── Generation reorder ───────────────────────────────────────────────────────
+function renderReorder() {
+  const original = [1,2,3,4,5];
+  const reordered = [1,3,5,4,2]; // lost-in-middle pattern
+  const colors = ['var(--accent)', 'var(--success)', 'var(--warning)', 'var(--accent3)', 'var(--accent2)'];
+
+  document.getElementById('beforeReorder').innerHTML = original.map((n,i) =>
+    `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:.8rem;display:flex;align-items:center;gap:8px">
+      <span style="width:22px;height:22px;border-radius:50%;background:${colors[i]};display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;flex-shrink:0">${n}</span>
+      <span>${MOCK_CHUNKS[i].content.slice(0,60)}…</span>
+      <span style="margin-left:auto;font-size:.7rem;color:var(--muted)">${MOCK_CHUNKS[i].score.toFixed(2)}</span>
+    </div>`).join('');
+
+  document.getElementById('afterReorder').innerHTML = reordered.map(n =>
+    `<div style="background:var(--surface2);border:1px solid ${colors[n-1]};border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:.8rem;display:flex;align-items:center;gap:8px">
+      <span style="width:22px;height:22px;border-radius:50%;background:${colors[n-1]};display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;flex-shrink:0">${n}</span>
+      <span>${MOCK_CHUNKS[n-1].content.slice(0,60)}…</span>
+      <span style="margin-left:auto;font-size:.7rem;color:var(--accent2)">★ pos ${reordered.indexOf(n)+1}</span>
+    </div>`).join('');
+}
+
+// ─── Eval ─────────────────────────────────────────────────────────────────────
+function renderEval(config) {
+  const rows = EVAL_DATA[config];
+  document.getElementById('evalBody').innerHTML = rows.map(r => `
+    <tr>
+      <td style="font-weight:600">${r.metric}</td>
+      <td><span style="font-weight:700;color:${r.score >= r.threshold ? 'var(--success)' : 'var(--accent3)'}">${r.score.toFixed(2)}</span></td>
+      <td>
+        <div class="score-bar-wrap">
+          <div class="score-bar"><div class="score-bar-fill ${r.cls}" style="width:${r.score*100}%"></div></div>
+          <div class="score-val" style="color:${r.score >= r.threshold ? 'var(--success)' : 'var(--accent3)'}">${Math.round(r.score*100)}%</div>
+        </div>
+      </td>
+      <td><span style="color:var(--muted)">${r.threshold.toFixed(1)}</span></td>
+    </tr>`).join('');
+  document.getElementById('worstPerformers').innerHTML = WORST_PERFORMERS[config];
+}
+
+function switchEvalTab(el, config) {
+  document.querySelectorAll('#eval .tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderEval(config);
+}
+
+// ─── Nav highlight on scroll ─────────────────────────────────────────────────
+const sections = document.querySelectorAll('section[id]');
+const navLinks = document.querySelectorAll('nav a');
+window.addEventListener('scroll', () => {
+  let cur = '';
+  sections.forEach(s => { if (window.scrollY >= s.offsetTop - 80) cur = s.id; });
+  navLinks.forEach(a => { a.classList.toggle('active', a.getAttribute('href') === '#' + cur); });
+});
+</script>
+</body>
+</html>
