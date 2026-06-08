@@ -34,13 +34,13 @@ def setup_directory():
 #
 # Ví dụ nếu có direct link:
 #
-# import requests
-#
-# def download_file(url: str, filename: str):
-#     response = requests.get(url)
-#     filepath = DATA_DIR / filename
-#     filepath.write_bytes(response.content)
-#     print(f"✓ Đã tải: {filepath}")
+import requests
+
+def download_file(url: str, filename: str):
+    response = requests.get(url)
+    filepath = DATA_DIR / filename
+    filepath.write_bytes(response.content)
+    print(f"✓ Đã tải: {filepath}")
 
 
 if __name__ == "__main__":
