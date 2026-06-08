@@ -3,7 +3,17 @@ python-dotenv>=1.0.0
 requests>=2.31.0
 
 # Task 2 - Crawling
-crawl4ai>=0.3.0
+crawl4ai
+markitdown[all]
+langchain-text-splitters
+sentence-transformers
+chromadb
+rank-bm25
+numpy
+pageindex
+openai
+python-dotenv
+>=0.3.0
 
 # Task 3 - Document conversion
 markitdown>=0.1.0
