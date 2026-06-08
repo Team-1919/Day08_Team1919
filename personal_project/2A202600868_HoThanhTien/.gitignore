@@ -1,0 +1,13 @@
+# Environment variables - chứa secrets, KHÔNG commit
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Data files lớn (cache/index)
+data/.chunks_cache.pkl
+data/.faiss.index
+data/.faiss.meta.pkl
